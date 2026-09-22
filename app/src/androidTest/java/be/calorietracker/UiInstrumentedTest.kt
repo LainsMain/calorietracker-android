@@ -155,9 +155,11 @@ class UiInstrumentedTest {
     }
     compose.onNodeWithContentDescription("Take photo").assertExists()
     compose.onNodeWithContentDescription("New chat").performClick()
-    compose.onNodeWithText("Let's find what works for you").assertIsDisplayed()
+    compose.waitUntil(5000) { store.state.value.activeConversationId != "default" }
+    compose.onNodeWithText("Let's find what works for you").performScrollTo().assertIsDisplayed()
     compose.onNodeWithContentDescription("Chat history").performClick()
     compose.onNodeWithText("How is my week looking?").performClick()
+    compose.waitUntil(5000) { store.state.value.activeConversationId == "default" }
     compose.onNodeWithText("I prepared one reviewed change.").assertIsDisplayed()
     snapshot("coach")
     compose.onNodeWithText("Today").performClick()
