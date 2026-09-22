@@ -400,24 +400,20 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
         }
       }
     }
-    item { Section("Health Connect activity") }
+    item { Section("Activity from Health Connect") }
     if (s.health.isEmpty())
-      item { Text("Connect Health Connect in Settings to see activity from compatible apps.") }
+      item {
+        EmptyState(
+          "No imported activity yet",
+          "Connect or refresh Health Connect in Settings. Runs, walks, steps, distance, and energy will appear here when a compatible app shares them.",
+        )
+      }
     items(s.health.sortedByDescending { it.date }.take(14)) { day ->
       Panel {
-        Text(day.date, style = MaterialTheme.typography.titleMedium)
-        Text("${day.steps?:"—"} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km")
-        Text("Active: ${energy(day.activeKcal)} · Total: ${energy(day.totalKcal)}")
-        day.workouts.forEach { w ->
-          Text(
-            "${w.title} · ${java.time.Duration.between(java.time.Instant.parse(w.start),java.time.Instant.parse(w.end)).toMinutes()} min · ${w.source}",
-            style = MaterialTheme.typography.bodySmall,
-          )
-        }
-        Text(
-          "Sources: ${day.origins.joinToString().ifBlank{"No data"}}\nUpdated ${day.synced.take(16).replace('T',' ')} UTC",
-          style = MaterialTheme.typography.bodySmall,
-        )
+        Text(java.time.LocalDate.parse(day.date).format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium)
+        Text("${day.steps ?: 0} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km · ${energy(day.activeKcal)} active")
+        day.workouts.forEach { WorkoutSummary(it) }
+        if (day.workouts.isEmpty()) Text("No workouts recorded for this day.", style = MaterialTheme.typography.bodySmall)
       }
     }
     item { Section("Plan history") }
@@ -428,7 +424,12 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
           style = MaterialTheme.typography.titleMedium,
         )
         Text("P ${p.protein.fmt()} · C ${p.carbs.fmt()} · F ${p.fat.fmt()} g")
-        Text("${p.author}: ${p.reason}", style = MaterialTheme.typography.bodySmall)
+        p.intent?.let { intent ->
+          Text(
+            "Guided ${intent.goal} plan · ${kotlin.math.abs(intent.desiredWeeklyKg).fmt(2)} kg/week pace",
+            style = MaterialTheme.typography.bodySmall,
+          )
+        }
       }
     }
   }

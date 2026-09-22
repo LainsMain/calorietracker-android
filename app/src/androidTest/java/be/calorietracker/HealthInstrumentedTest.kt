@@ -94,7 +94,7 @@ class HealthInstrumentedTest {
           .records
           .any { it.metadata.id == inserted.recordIdsList[0] }
       )
-      assertEquals(1, first.measurements.count { it.source == context.packageName })
+      assertEquals(1, first.measurements.count { it.sourceId != null })
       deps.health().sync()
       assertEquals(
         first.health.map { it.date to it.steps },
@@ -102,7 +102,7 @@ class HealthInstrumentedTest {
       )
       assertEquals(
         1,
-        deps.store().state.value.measurements.count { it.source == context.packageName },
+        deps.store().state.value.measurements.count { it.sourceId != null },
       )
       client.deleteRecords(
         StepsRecord::class,
@@ -115,7 +115,7 @@ class HealthInstrumentedTest {
         clientRecordIdsList = emptyList(),
       )
       deps.health().sync()
-      assertTrue(deps.store().state.value.measurements.none { it.source == context.packageName })
+      assertTrue(deps.store().state.value.measurements.none { it.sourceId != null })
       assertTrue(
         client
           .readRecords(

@@ -30,6 +30,8 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
   var tab by rememberSaveable { mutableIntStateOf(0) }
   var settings by remember { mutableStateOf(false) }
   var planEditor by remember { mutableStateOf(false) }
+  var planSeed by remember { mutableStateOf<Plan?>(null) }
+  var weeklyPeriod by remember { mutableStateOf<ClosedRange<LocalDate>?>(null) }
   var foodSearch by remember { mutableStateOf(quickLog) }
   var date by rememberSaveable { mutableStateOf(today()) }
   var chosen by remember { mutableStateOf<Food?>(null) }
@@ -94,20 +96,23 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
           )
-          IconButton(onClick = { planEditor = true }) { Icon(Icons.Rounded.Tune, "Edit plan") }
+          IconButton(onClick = { planSeed = state.plan(); planEditor = true }) { Icon(Icons.Rounded.Tune, "Review plan") }
           IconButton(onClick = { settings = true }) { Icon(Icons.Rounded.Settings, "Settings") }
         }
         when (tab) {
           0 ->
             TodayScreen(
+              vm,
               state,
               {
                 foodSearch = true
                 date = today()
               },
-              { planEditor = true },
+              { planSeed = state.plan(); planEditor = true },
               { vm.run { vm.store.update { it.copy(water = it.water + Water()) } } },
               { tab = 4 },
+              { weeklyPeriod = it },
+              { draft -> planSeed = draft; planEditor = true },
             )
           1 -> DiaryScreen(vm, state, date, { date = it }, { editing = it })
           2 -> RecipesScreen(vm, state)
@@ -119,13 +124,17 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
   if (settings) SettingsScreen(vm) { settings = false }
   if (planEditor)
     PlanEditor(
-      state.plan(),
+      planSeed ?: state.plan(),
+      profile = state.profile,
       onDismiss = { planEditor = false },
       onSave = { p ->
         vm.run { vm.store.update { it.copy(plans = it.plans + p) } }
         planEditor = false
       },
     )
+  weeklyPeriod?.let { period ->
+    WeeklyCheckInDialog(vm, state, period) { weeklyPeriod = null }
+  }
   if (foodSearch)
     FoodSearch(
       vm,
@@ -180,11 +189,14 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
 
 @Composable
 fun TodayScreen(
+  vm: TrackerViewModel,
   s: AppState,
   log: () -> Unit,
   edit: () -> Unit,
   water: () -> Unit,
   coach: () -> Unit,
+  startWeekly: (ClosedRange<LocalDate>) -> Unit,
+  editWeekly: (Plan) -> Unit,
 ) {
   val totals = s.totals()
   val plan = s.plan()
@@ -201,6 +213,7 @@ fun TodayScreen(
         "A little better,\nevery day.",
       )
     }
+    item { WeeklyReviewCard(vm, s, startWeekly, editWeekly, coach) }
     item {
       Panel(tint = MaterialTheme.colorScheme.primaryContainer) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
@@ -241,24 +254,28 @@ fun TodayScreen(
     }
     item { Section("Make it a good day") }
     item {
-      Row(horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-        Panel(Modifier.weight(1f)) {
-          Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.primary)
-          Text(
-            "${s.water.filter{it.date==today()}.sumOf{it.ml}} ml",
-            style = MaterialTheme.typography.titleLarge,
-          )
-          Text("Water", style = MaterialTheme.typography.bodySmall)
-          TextButton(onClick = water) { Text("+ 250 ml") }
+      Panel(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Rounded.DirectionsRun, null, tint = MaterialTheme.colorScheme.primary)
+          Text("  Today’s activity", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
+          Text(activity?.let { "Synced" } ?: "No data", style = MaterialTheme.typography.labelMedium)
         }
-        Panel(Modifier.weight(1f)) {
-          Icon(Icons.Rounded.DirectionsWalk, null, tint = MaterialTheme.colorScheme.primary)
-          Text(activity?.steps?.toString() ?: "—", style = MaterialTheme.typography.titleLarge)
-          Text("Steps", style = MaterialTheme.typography.bodySmall)
-          Text(
-            "${activity?.activeKcal.fmt()} active kcal",
-            style = MaterialTheme.typography.labelMedium,
-          )
+        if (activity == null)
+          Text("Connect or refresh Health Connect in Settings to see steps and workouts here.")
+        else {
+          Text("${activity.steps ?: 0} steps · ${(activity.distanceMetres?.div(1000)).fmt(1)} km · ${energy(activity.activeKcal)} active")
+          activity.workouts.forEach { workout -> WorkoutSummary(workout) }
+          Text("Activity helps interpret your weekly trend; it is not added to today’s food budget.", style = MaterialTheme.typography.bodySmall)
+        }
+      }
+    }
+    item {
+      Panel(Modifier.fillMaxWidth()) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.primary)
+          Text("  Water", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+          Text("${s.water.filter{it.date==today()}.sumOf{it.ml}} ml")
+          TextButton(onClick = water) { Text("+ 250 ml") }
         }
       }
     }
@@ -299,7 +316,20 @@ fun TodayScreen(
         }
       }
     }
-    item { TextButton(onClick = edit) { Text("View & adjust your plan") } }
+    item { TextButton(onClick = edit) { Text("Review my plan") } }
+  }
+}
+
+@Composable
+fun WorkoutSummary(workout: Workout) {
+  val start = java.time.Instant.parse(workout.start).atZone(java.time.ZoneId.systemDefault())
+  val minutes = java.time.Duration.between(java.time.Instant.parse(workout.start), java.time.Instant.parse(workout.end)).toMinutes()
+  Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
+    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+      Text(workout.title.ifBlank { workout.typeName }, style = MaterialTheme.typography.titleMedium)
+      Text("${start.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))} · $minutes min" + (workout.distanceMetres?.let { " · ${(it / 1000).fmt(1)} km" } ?: "") + (workout.activeKcal?.let { " · ${it.fmt()} kcal" } ?: ""))
+      Text(workout.sourceLabel, style = MaterialTheme.typography.labelSmall)
+    }
   }
 }
 

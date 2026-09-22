@@ -10,6 +10,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.unit.dp
 import be.calorietracker.domain.*
+import kotlin.math.roundToInt
 
 @Composable
 fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
@@ -185,6 +186,7 @@ fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
   if (review != null || manual)
     PlanEditor(
       review,
+      profile = runCatching { profile() }.getOrNull(),
       onDismiss = {
         review = null
         manual = false
@@ -201,70 +203,193 @@ fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
 @Composable
 fun PlanEditor(
   plan: Plan?,
+  profile: Profile? = null,
   onDismiss: () -> Unit,
   onSave: (Plan) -> Unit,
   initial: Boolean = false,
 ) {
-  var kcal by remember {
-    mutableStateOf(plan?.kcal?.let { "%.0f".format(java.util.Locale.ROOT, it) } ?: "")
+  val eligible = profile?.let { it.age >= 18 && !it.restricted } == true
+  if (!eligible) {
+    ManualPlanEditor(plan, onDismiss, onSave, initial)
+    return
   }
-  var protein by remember {
-    mutableStateOf(plan?.protein?.let { "%.1f".format(java.util.Locale.ROOT, it) } ?: "")
-  }
-  var fat by remember {
-    mutableStateOf(plan?.fat?.let { "%.1f".format(java.util.Locale.ROOT, it) } ?: "")
-  }
-  var carbs by remember {
-    mutableStateOf(plan?.carbs?.let { "%.1f".format(java.util.Locale.ROOT, it) } ?: "")
-  }
-  var reason by remember {
-    mutableStateOf(if (initial) plan?.reason ?: "Manual starting targets" else "Manual adjustment")
-  }
-  var date by remember { mutableStateOf(today()) }
-  var error by remember { mutableStateOf<String?>(null) }
-  Modal(if (initial) "Your starting plan" else "Adjust your plan", onDismiss) {
-    Text(
-      "An estimate to learn from, not a fixed prescription. Every change is saved in your plan history."
+  val p = profile!!
+  val maintenance = remember(p) { PlanCalculator.maintenance(p) }
+  val initialFraction =
+    plan?.intent?.let { (plan.kcal - it.guidedOffsetKcal) / maintenance - 1 }
+      ?: when (p.goal) { "lose" -> -.10; "gain" -> .05; else -> 0.0 }
+  var step by rememberSaveable { mutableIntStateOf(0) }
+  var pacePosition by rememberSaveable {
+    mutableFloatStateOf(
+      when (p.goal) {
+        "lose" -> ((-initialFraction - .05) / .15).toFloat().coerceIn(0f, 1f)
+        "gain" -> ((initialFraction - .025) / .075).toFloat().coerceIn(0f, 1f)
+        else -> 0f
+      }
     )
+  }
+  var offset by rememberSaveable { mutableFloatStateOf(plan?.intent?.guidedOffsetKcal?.toFloat() ?: 0f) }
+  var proteinPerKg by rememberSaveable {
+    mutableFloatStateOf((plan?.protein?.div(p.weightKg) ?: 1.4).toFloat().coerceIn(1.2f, 2f))
+  }
+  var fatFraction by rememberSaveable {
+    mutableFloatStateOf((plan?.fat?.times(9)?.div(plan.kcal) ?: .3).toFloat().coerceIn(.25f, .35f))
+  }
+  var advanced by rememberSaveable { mutableStateOf(false) }
+  var directKcal by rememberSaveable { mutableStateOf(plan?.kcal?.fmt() ?: "") }
+  var directProtein by rememberSaveable { mutableStateOf(plan?.protein?.fmt(1) ?: "") }
+  var directFat by rememberSaveable { mutableStateOf(plan?.fat?.fmt(1) ?: "") }
+  var date by rememberSaveable { mutableStateOf(today()) }
+  var error by remember { mutableStateOf<String?>(null) }
+  val fraction =
+    when (p.goal) {
+      "lose" -> -.05 - pacePosition * .15
+      "gain" -> .025 + pacePosition * .075
+      else -> 0.0
+    }
+  val guided =
+    runCatching {
+      PlanCalculator.target(
+        p,
+        fraction,
+        offset.roundToInt().toDouble(),
+        proteinPerKg.toDouble(),
+        fatFraction.toDouble(),
+        author = if (initial) "calculator" else "user",
+        reason = if (initial) "Guided starting plan" else "Guided plan review",
+        effective = date,
+      )
+    }.getOrNull()
+  val preview =
+    if (!advanced) guided
+    else
+      runCatching {
+        val kcal = directKcal.toDouble()
+        val protein = directProtein.toDouble()
+        val fat = directFat.toDouble()
+        Plan(
+          effective = date,
+          kcal = kcal,
+          protein = protein,
+          fat = fat,
+          carbs = (kcal - protein * 4 - fat * 9) / 4,
+          author = if (initial) "user" else "user",
+          reason = "Advanced guided plan",
+          intent = guided?.intent,
+        ).also { it.validate() }
+      }.getOrNull()
+  Modal(if (initial) "Build your starting plan" else "Review your plan", onDismiss) {
+    Text("Step ${step + 1} of 4", style = MaterialTheme.typography.labelLarge)
+    LinearProgressIndicator({ (step + 1) / 4f }, Modifier.fillMaxWidth())
+    when (step) {
+      0 -> {
+        Text("The facts behind your estimate", style = MaterialTheme.typography.headlineSmall)
+        Panel {
+          Text("${p.age} years · ${p.heightCm.fmt(0)} cm · ${p.weightKg.fmt(1)} kg")
+          Text("${p.goal.replaceFirstChar { it.uppercase() }} weight · target ${p.targetKg.fmt(1)} kg")
+          Text("Activity multiplier ${p.activity.fmt(1)}")
+        }
+        Text("We use these details only to estimate a starting range. Your real trend will become more useful over time.")
+      }
+      1 -> {
+        Text("Choose a pace that feels doable", style = MaterialTheme.typography.headlineSmall)
+        Panel(tint = MaterialTheme.colorScheme.primaryContainer) {
+          Text("Estimated maintenance", style = MaterialTheme.typography.labelLarge)
+          Text("${maintenance.fmt()} kcal", style = MaterialTheme.typography.displaySmall)
+          Text("Likely range ${(.9 * maintenance).fmt()}–${(1.1 * maintenance).fmt()} kcal")
+          Text("Mifflin–St Jeor × ${p.activity.fmt(1)}; real needs vary day to day.")
+        }
+        if (p.goal != "maintain") {
+          Slider(pacePosition, { pacePosition = it }, valueRange = 0f..1f, steps = 5)
+          val weekly = guided?.intent?.desiredWeeklyKg ?: 0.0
+          Text("About ${kotlin.math.abs(weekly).fmt(2)} kg per week", style = MaterialTheme.typography.titleMedium)
+          Text(if (pacePosition < .34f) "Slower, with more room for food." else if (pacePosition < .75f) "A steady middle ground." else "Faster, with less room for food.")
+        } else Text("Maintenance keeps the target centred on your current estimate.")
+      }
+      2 -> {
+        Text("Make the target feel practical", style = MaterialTheme.typography.headlineSmall)
+        Text("${guided?.kcal.fmt()} kcal per day", style = MaterialTheme.typography.displaySmall)
+        Text("Fine-tune in 50 kcal steps. This does not change your goal; it changes how assertively you approach it.")
+        Slider(offset, { offset = (it / 50).roundToInt() * 50f }, valueRange = -300f..300f, steps = 11)
+        Text(
+          when {
+            offset < 0 -> "${kotlin.math.abs(offset).toDouble().fmt()} kcal less: faster, with less flexibility."
+            offset > 0 -> "${offset.toDouble().fmt()} kcal more: slower, with more flexibility."
+            else -> "Using the calculated target."
+          }
+        )
+        Text("Protein ${guided?.protein.fmt()} g")
+        Slider(proteinPerKg, { proteinPerKg = it }, valueRange = 1.2f..2f, steps = 7)
+        Text("Fat ${guided?.fat.fmt()} g")
+        Slider(fatFraction, { fatFraction = it }, valueRange = .25f..35f, steps = 9)
+        Text("Carbohydrates fill the remaining energy: ${guided?.carbs.fmt()} g")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+          Switch(advanced, { advanced = it })
+          Text("  Advanced exact targets")
+        }
+        if (advanced) {
+          Text("Values outside the guided range carry more uncertainty. Macro energy must still match calories.", color = MaterialTheme.colorScheme.error)
+          Field("Daily energy (kcal)", directKcal, { directKcal = it }, true)
+          Field("Protein (g)", directProtein, { directProtein = it }, true)
+          Field("Fat (g)", directFat, { directFat = it }, true)
+        }
+      }
+      else -> {
+        Text("Your plan preview", style = MaterialTheme.typography.headlineSmall)
+        Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
+          Text("${preview?.kcal.fmt()} kcal", style = MaterialTheme.typography.displaySmall)
+          Text("Protein ${preview?.protein.fmt()} g · Carbs ${preview?.carbs.fmt()} g · Fat ${preview?.fat.fmt()} g")
+          Text("Starts ${if (date == today()) "today" else date}")
+        }
+        Text("This is a starting point. Weekly check-ins will compare your complete diary days with your weight trend before suggesting any change.")
+        TextButton(onClick = { advanced = true; step = 2 }) { Text("Use exact targets instead") }
+        if (!initial) Field("Start date", date, { date = it })
+      }
+    }
+    ErrorText(error)
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      if (step > 0) OutlinedButton({ step-- }, Modifier.weight(1f)) { Text("Back") }
+      Button(
+        onClick = {
+          if (step < 3) step++
+          else try {
+            val result = requireNotNull(preview) { "Check your target values." }
+            result.validate()
+            onSave(result)
+          } catch (e: Exception) { error = e.message ?: "Check your target values." }
+        },
+        modifier = Modifier.weight(1f),
+      ) { Text(if (step < 3) "Continue" else if (initial) "Start my diary" else "Save plan") }
+    }
+  }
+}
+
+@Composable
+private fun ManualPlanEditor(
+  plan: Plan?,
+  onDismiss: () -> Unit,
+  onSave: (Plan) -> Unit,
+  initial: Boolean,
+) {
+  var kcal by remember { mutableStateOf(plan?.kcal?.fmt() ?: "") }
+  var protein by remember { mutableStateOf(plan?.protein?.fmt(1) ?: "") }
+  var fat by remember { mutableStateOf(plan?.fat?.fmt(1) ?: "") }
+  var error by remember { mutableStateOf<String?>(null) }
+  Modal(if (initial) "Set your targets" else "Review your targets", onDismiss) {
+    Text("Use targets agreed with a qualified professional. The app will track them without generating weight-management recommendations.")
     Field("Daily energy (kcal)", kcal, { kcal = it }, true)
     Field("Protein (g)", protein, { protein = it }, true)
     Field("Fat (g)", fat, { fat = it }, true)
-    Field("Carbohydrates (g)", carbs, { carbs = it }, true)
-    TextButton(
-      onClick = {
-        try {
-          carbs = ((kcal.toDouble() - protein.toDouble() * 4 - fat.toDouble() * 9) / 4).toString()
-        } catch (_: Exception) {
-          error = "Enter calories, protein and fat first."
-        }
-      }
-    ) {
-      Text("Calculate carbs from remaining energy")
-    }
-    Field("Effective date (YYYY-MM-DD)", date, { date = it })
-    Field("Reason", reason, { reason = it })
     ErrorText(error)
-    Button(
-      onClick = {
-        try {
-          val p =
-            Plan(
-              effective = date,
-              kcal = kcal.toDouble(),
-              protein = protein.toDouble(),
-              fat = fat.toDouble(),
-              carbs = carbs.toDouble(),
-              reason = reason,
-            )
-          p.validate()
-          onSave(p)
-        } catch (e: Exception) {
-          error = e.message ?: "Check all target values."
-        }
-      },
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Text(if (initial) "Start my diary" else "Save new plan")
-    }
+    Button({
+      try {
+        val energy = kcal.toDouble()
+        val p = protein.toDouble()
+        val f = fat.toDouble()
+        val value = Plan(kcal = energy, protein = p, fat = f, carbs = (energy - p * 4 - f * 9) / 4, reason = "Personalised manual targets")
+        value.validate()
+        onSave(value)
+      } catch (e: Exception) { error = e.message ?: "Check the values." }
+    }, Modifier.fillMaxWidth()) { Text(if (initial) "Start my diary" else "Save targets") }
   }
 }

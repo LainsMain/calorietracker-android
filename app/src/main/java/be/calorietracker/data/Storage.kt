@@ -145,7 +145,7 @@ constructor(@ApplicationContext private val context: Context, private val crypto
     update {
       state.copy(
         health = emptyList(),
-        measurements = state.measurements.filter { it.source == "Manual" },
+        measurements = state.measurements.filter { it.sourceId == null },
       )
     }
   }
@@ -277,6 +277,8 @@ constructor(@ApplicationContext private val context: Context, private val crypto
   suspend fun applyProposal(id: String) = update { s ->
     val p = s.proposals.first { it.id == id }
     if (p.status != "pending") return@update s
+    val linkedWeekly = s.weeklyRecommendations.firstOrNull { it.id == id }
+    if (linkedWeekly != null && linkedWeekly.status != "pending") return@update s
     var next = s
     val ids =
       when (p.type) {
@@ -306,6 +308,10 @@ constructor(@ApplicationContext private val context: Context, private val crypto
         next.proposals.map {
           if (it.id == id) it.copy(status = "applied", appliedIds = ids) else it
         },
+      weeklyRecommendations =
+        next.weeklyRecommendations.map {
+          if (it.id == id) it.copy(status = "applied", appliedPlanId = ids.single()) else it
+        },
       messages =
         next.messages +
           Message(role = "system", text = "User approved ${p.type} proposal $id", kind = "audit"),
@@ -321,9 +327,120 @@ constructor(@ApplicationContext private val context: Context, private val crypto
         entries = s.entries.filterNot { it.id in p.appliedIds },
         recipes = s.recipes.filterNot { it.id in p.appliedIds },
         proposals = s.proposals.map { if (it.id == id) it.copy(status = "undone") else it },
+        weeklyRecommendations =
+          s.weeklyRecommendations.map {
+            if (it.id == id) it.copy(status = "pending", appliedPlanId = null) else it
+          },
         messages =
           s.messages + Message(role = "system", text = "User undid proposal $id", kind = "audit"),
       )
+  }
+
+  suspend fun saveWeeklyCheckIn(checkIn: WeeklyCheckIn) = update { state ->
+    val withWeight =
+      if (checkIn.weightKg != null && checkIn.weightMeasurementId == null) {
+        val measurement =
+          Measurement(
+            date = today(),
+            value = checkIn.weightKg,
+            source = "Weekly check-in",
+          )
+        state.copy(measurements = state.measurements + measurement) to
+          checkIn.copy(weightMeasurementId = measurement.id)
+      } else state to checkIn
+    val base = withWeight.first
+    val saved = withWeight.second
+    val candidate =
+      base.copy(weeklyCheckIns = base.weeklyCheckIns.filterNot { it.id == saved.id } + saved)
+    val recommendation = WeeklyEngine.evaluate(candidate, saved)
+    candidate.copy(
+      weeklyCheckIns =
+        candidate.weeklyCheckIns.map {
+          if (it.id == saved.id) it.copy(recommendationId = recommendation.id) else it
+        },
+      weeklyRecommendations =
+        candidate.weeklyRecommendations.filterNot { it.checkInId == saved.id } + recommendation,
+    )
+  }
+
+  suspend fun snoozeWeeklyCheckIn(period: ClosedRange<java.time.LocalDate>, until: java.time.LocalDate) =
+    update { state ->
+      val id = "weekly:${period.start}"
+      state.copy(
+        weeklyCheckIns =
+          state.weeklyCheckIns.filterNot { it.periodStart == period.start.toString() } +
+            WeeklyCheckIn(
+              id = id,
+              periodStart = period.start.toString(),
+              periodEnd = period.endInclusive.toString(),
+              status = "snoozed",
+              completedAt = null,
+              snoozedUntil = until.toString(),
+            )
+      )
+    }
+
+  suspend fun skipWeeklyCheckIn(period: ClosedRange<java.time.LocalDate>) = update { state ->
+    state.copy(
+      weeklyCheckIns =
+        state.weeklyCheckIns.filterNot { it.periodStart == period.start.toString() } +
+          WeeklyCheckIn(
+            id = "weekly:${period.start}",
+            periodStart = period.start.toString(),
+            periodEnd = period.endInclusive.toString(),
+            status = "skipped",
+            completedAt = now(),
+          )
+    )
+  }
+
+  suspend fun applyWeeklyRecommendation(id: String) = update { state ->
+    val recommendation = state.weeklyRecommendations.first { it.id == id }
+    if (recommendation.status != "pending" || recommendation.proposedKcal == null) return@update state
+    val current = state.plan() ?: error("No active plan")
+    val kcal = recommendation.proposedKcal
+    val protein = current.protein
+    val fat = current.fat
+    val carbs = (kcal - protein * 4 - fat * 9) / 4
+    require(carbs >= 0)
+    val plan =
+      current.copy(
+        id = newId(),
+        created = now(),
+        effective = today(),
+        kcal = kcal,
+        carbs = carbs,
+        author = "weekly review",
+        reason = recommendation.reason,
+        intent =
+          current.intent?.copy(
+            maintenanceKcal =
+              recommendation.estimatedMaintenanceKcal ?: current.intent.maintenanceKcal,
+            maintenanceLowKcal =
+              (recommendation.estimatedMaintenanceKcal ?: current.intent.maintenanceKcal) * .9,
+            maintenanceHighKcal =
+              (recommendation.estimatedMaintenanceKcal ?: current.intent.maintenanceKcal) * 1.1,
+          ),
+      )
+    plan.validate()
+    state.copy(
+      plans = state.plans + plan,
+      weeklyRecommendations =
+        state.weeklyRecommendations.map {
+          if (it.id == id) it.copy(status = "applied", appliedPlanId = plan.id) else it
+        },
+      proposals =
+        state.proposals.map {
+          if (it.id == id) it.copy(status = "applied", appliedIds = listOf(plan.id)) else it
+        },
+      messages =
+        state.messages +
+          Message(
+            role = "system",
+            text = "User approved weekly recommendation $id and plan ${plan.id}",
+            kind = "audit",
+          ),
+    )
   }
 }
 

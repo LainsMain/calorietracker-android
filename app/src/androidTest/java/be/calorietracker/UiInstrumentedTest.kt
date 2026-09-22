@@ -5,10 +5,13 @@ import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import be.calorietracker.domain.*
+import be.calorietracker.data.codec
 import be.calorietracker.services.WorkerServices
 import dagger.hilt.android.EntryPointAccessors
 import java.time.LocalDate
+import java.time.Instant
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.encodeToString
 import org.junit.*
 import org.junit.runner.RunWith
 
@@ -60,7 +63,56 @@ class UiInstrumentedTest {
                 value = 76.8 + it * 0.045,
               )
             },
-          health = listOf(HealthDay(today(), steps = 6428, activeKcal = 286.0)),
+          health =
+            listOf(
+              HealthDay(
+                today(),
+                steps = 6428,
+                activeKcal = 286.0,
+                distanceMetres = 5400.0,
+                workouts =
+                  listOf(
+                    Workout(
+                      id = "run",
+                      title = "Morning run",
+                      type = 56,
+                      start = Instant.now().minusSeconds(2400).toString(),
+                      end = Instant.now().minusSeconds(600).toString(),
+                      source = "com.google.android.apps.fitness",
+                      typeName = "Run",
+                      sourceLabel = "Google Fit",
+                      distanceMetres = 5100.0,
+                      activeKcal = 274.0,
+                    )
+                  ),
+              )
+            ),
+          messages =
+            listOf(
+              Message(role = "user", text = "How is my week looking?"),
+              Message(
+                role = "assistant",
+                text = "## Weekly focus\n- Keep logging complete days\n- Your **morning run** adds useful context.",
+              ),
+            ),
+          proposals =
+            listOf(
+              Proposal(
+                id = "ui-plan-proposal",
+                type = "plan",
+                payload =
+                  codec.encodeToString(
+                    Plan(
+                      kcal = 1950.0,
+                      protein = 100.0,
+                      fat = 70.0,
+                      carbs = 230.0,
+                      reason = "A reviewed UI test change",
+                    )
+                  ),
+                explanation = "A reviewed UI test change",
+              )
+            ),
           water = listOf(Water(ml = 1250)),
         )
       }
@@ -69,6 +121,8 @@ class UiInstrumentedTest {
       compose.onAllNodesWithText("YOUR DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
     }
     snapshot("today")
+    compose.onNodeWithText("Morning run").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Google Fit").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Diary").performClick()
     compose.onNodeWithText("Food diary").assertIsDisplayed()
     snapshot("diary")
@@ -79,6 +133,17 @@ class UiInstrumentedTest {
     snapshot("progress")
     compose.onNodeWithText("Coach").performClick()
     compose.onNodeWithText("Your coach").assertIsDisplayed()
+    compose.onNodeWithText("Weekly focus").assertIsDisplayed()
+    compose.onNodeWithText("Keep logging complete days").assertIsDisplayed()
+    compose.onNodeWithText("Ready for your review").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Apply").performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      store.state.value.proposals.single { it.id == "ui-plan-proposal" }.status == "applied"
+    }
+    compose.onNodeWithText("Undo").performScrollTo().performClick()
+    compose.waitUntil(5000) {
+      store.state.value.proposals.single { it.id == "ui-plan-proposal" }.status == "undone"
+    }
     snapshot("coach")
     compose.onNodeWithText("Today").performClick()
     compose.waitUntil(5000) {
@@ -92,6 +157,43 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Save food").performScrollTo().performClick()
     compose.onNodeWithText("Log food").performScrollTo().performClick()
     compose.waitUntil(5000) { store.state.value.entries.any { it.food.name == "Test custom food" } }
+  }
+
+  @Test
+  fun guidedPlanAndWeeklyCheckInOpenAsStepByStepFlows() {
+    val store =
+      EntryPointAccessors.fromApplication(compose.activity.application, WorkerServices::class.java)
+        .store()
+    runBlocking {
+      store.load()
+      val profile = Profile(name = "Sam", goal = "lose", weightKg = 80.0, targetKg = 74.0)
+      store.update {
+        AppState(
+          profile = profile,
+          plans =
+            listOf(
+              PlanCalculator.suggest(profile).copy(
+                effective = LocalDate.now().minusDays(60).toString(),
+                created = Instant.now().minusSeconds(60L * 86400).toString(),
+              )
+            ),
+          measurements = listOf(Measurement(value = 80.0)),
+        )
+      }
+    }
+    compose.waitUntil(15000) {
+      compose.onAllNodesWithText("YOUR DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithContentDescription("Review plan").performClick()
+    compose.onNodeWithText("The facts behind your estimate").assertIsDisplayed()
+    compose.onNodeWithText("Step 1 of 4").assertIsDisplayed()
+    compose.onNodeWithContentDescription("Close").performClick()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithText("Your weekly check-in is ready").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText("Review last week").performClick()
+    compose.onNodeWithText("Which days were fully tracked?").assertIsDisplayed()
+    compose.onNodeWithText("Step 1 of 3").assertIsDisplayed()
   }
 
   private fun snapshot(name: String) {

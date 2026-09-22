@@ -106,8 +106,13 @@ constructor(
     }
   }
 
-  fun send(text: String, photos: List<String> = emptyList()) {
-    coachJob = run { coach.send(text, photos) }
+  fun send(
+    text: String,
+    photos: List<String> = emptyList(),
+    contextKind: String? = null,
+    contextId: String? = null,
+  ) {
+    coachJob = run { coach.send(text, photos, contextKind, contextId) }
   }
 
   fun retryCoach() {
