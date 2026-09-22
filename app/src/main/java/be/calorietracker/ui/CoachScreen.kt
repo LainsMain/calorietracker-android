@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -44,7 +45,7 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
     }
   Column(Modifier.fillMaxSize()) {
     LazyColumn(
-      Modifier.weight(1f),
+      Modifier.weight(1f).testTag("coach-list"),
       contentPadding = PaddingValues(20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
