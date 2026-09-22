@@ -1,12 +1,11 @@
-A native, local-first Android calorie tracker for personal use.
+CalorieTracker 1.1 makes planning and weekly adjustment clearer while keeping every change under your control.
 
-- Guided setup and editable calorie/macro plans with history.
-- Food diary, barcode scanning, Belgian-preferred Open Food Facts search and 2,887 offline CoFID foods.
-- Recipes with finished batch weights and accurate gram-based portions.
-- Weight trends, measurements, encrypted photos and Health Connect activity.
-- One persistent DeepSeek conversation with images, tools, compaction and reviewed actions.
-- Encrypted backups, app locking, reminders, quick-log widget and verified APK updates.
+- Replaces the raw target form with a guided estimate, pace, calorie fine-tuning, macro and preview flow.
+- Adds a Monday weekly check-in based on confirmed complete diary days, weight trend and activity context.
+- Uses deterministic three-week evidence rules, a 75 kcal deadband and a 150 kcal adjustment cap.
+- Shows runs and workouts with readable names, local times, distance, energy and friendly source apps.
+- Redesigns the persistent coach with safe Markdown, day separators, attachment/message actions and contextual cards.
+- Uses DeepSeek Flash high-effort thinking while keeping provider reasoning out of the visible transcript.
+- Preserves v1.0 plans, diary entries, recipes, photos, chat and encrypted backups.
 
-Android 10 or newer. Enter your own DeepSeek API key in Settings to enable the coach.
-The first install and subsequent updates use Android's installation confirmation.
-See the repository documentation for data sources, privacy, testing and known limits.
+Android 10 or newer. Weekly calculations work offline; an explicit “Explain with my coach” tap uses your own DeepSeek API key. Updates still require Android's installation confirmation.

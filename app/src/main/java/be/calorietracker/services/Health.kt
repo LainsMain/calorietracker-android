@@ -61,7 +61,15 @@ constructor(
     }
   }
 
-  suspend fun sync() = mutex.withLock { syncLocked() }
+  suspend fun sync() =
+    mutex.withLock {
+      try {
+        syncLocked()
+      } catch (e: Exception) {
+        prefs.set("healthError", e.message ?: "Health Connect could not be refreshed.")
+        throw e
+      }
+    }
 
   private suspend fun syncLocked() {
     if (!available()) return
@@ -71,9 +79,11 @@ constructor(
       store.update {
         it.copy(
           health = emptyList(),
-          measurements = it.measurements.filter { m -> m.source == "Manual" },
+          measurements = it.measurements.filter { m -> m.sourceId == null },
         )
       }
+      if (prefs.get("healthEnabled") == "true")
+        prefs.set("healthError", "Health Connect permissions were revoked.")
       return
     }
     val zone = ZoneId.systemDefault()
@@ -139,17 +149,37 @@ constructor(
             c.readRecords(
               ReadRecordsRequest(ExerciseSessionRecord::class, range, pageToken = token)
             )
-          r.records.forEach {
+          for (record in r.records) {
+            val sessionMetrics = buildSet {
+              if (HealthPermission.getReadPermission(ActiveCaloriesBurnedRecord::class) in access)
+                add(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)
+              if (HealthPermission.getReadPermission(DistanceRecord::class) in access)
+                add(DistanceRecord.DISTANCE_TOTAL)
+            }
+            val session =
+              if (sessionMetrics.isEmpty()) null
+              else
+                c.aggregate(
+                  AggregateRequest(
+                    sessionMetrics,
+                    TimeRangeFilter.between(record.startTime, record.endTime),
+                    setOf(record.metadata.dataOrigin),
+                  )
+                )
             workouts +=
               Workout(
-                id = it.metadata.id,
-                title = it.title ?: "Exercise",
-                type = it.exerciseType,
-                start = it.startTime.toString(),
-                end = it.endTime.toString(),
-                source = it.metadata.dataOrigin.packageName,
+                id = record.metadata.id,
+                title = record.title ?: exerciseName(record.exerciseType),
+                type = record.exerciseType,
+                start = record.startTime.toString(),
+                end = record.endTime.toString(),
+                source = record.metadata.dataOrigin.packageName,
+                typeName = exerciseName(record.exerciseType),
+                sourceLabel = sourceLabel(record.metadata.dataOrigin.packageName),
+                distanceMetres = session?.get(DistanceRecord.DISTANCE_TOTAL)?.inMeters,
+                activeKcal = session?.get(ActiveCaloriesBurnedRecord.ACTIVE_CALORIES_TOTAL)?.inKilocalories,
               )
-            origins += it.metadata.dataOrigin.packageName
+            origins += record.metadata.dataOrigin.packageName
           }
           token = r.pageToken?.takeIf { it.isNotEmpty() }
         } while (token != null)
@@ -164,7 +194,7 @@ constructor(
                 id = "health:${it.metadata.id}",
                 date = it.time.atZone(zone).toLocalDate().toString(),
                 value = it.weight.inKilograms,
-                source = it.metadata.dataOrigin.packageName,
+                source = sourceLabel(it.metadata.dataOrigin.packageName),
                 sourceId = it.metadata.id,
               )
           }
@@ -186,11 +216,52 @@ constructor(
       it.copy(
         health = results,
         measurements =
-          it.measurements.filter { m -> m.source == "Manual" } +
+          it.measurements.filter { m -> m.sourceId == null } +
             weights.distinctBy { w -> w.sourceId },
       )
     }
     prefs.set("healthToken", newToken)
     prefs.set("healthSync", now())
+    prefs.set("healthSources", results.flatMap { it.workouts }.map { it.sourceLabel }.distinct().joinToString())
+    prefs.set("healthError", "")
   }
+
+  private fun sourceLabel(packageName: String): String =
+    runCatching {
+      val info = context.packageManager.getApplicationInfo(packageName, 0)
+      context.packageManager.getApplicationLabel(info).toString()
+    }.getOrElse {
+      when (packageName) {
+        "com.google.android.apps.fitness" -> "Google Fit"
+        "com.google.android.apps.healthdata" -> "Health Connect"
+        "com.sec.android.app.shealth" -> "Samsung Health"
+        "com.fitbit.FitbitMobile" -> "Fitbit"
+        else -> packageName.substringAfterLast('.').replaceFirstChar { c -> c.uppercase() }
+      }
+    }
+
+  private fun exerciseName(type: Int): String =
+    when (type) {
+      ExerciseSessionRecord.EXERCISE_TYPE_RUNNING -> "Run"
+      ExerciseSessionRecord.EXERCISE_TYPE_RUNNING_TREADMILL -> "Treadmill run"
+      ExerciseSessionRecord.EXERCISE_TYPE_WALKING -> "Walk"
+      ExerciseSessionRecord.EXERCISE_TYPE_BIKING -> "Bike ride"
+      ExerciseSessionRecord.EXERCISE_TYPE_BIKING_STATIONARY -> "Indoor cycling"
+      ExerciseSessionRecord.EXERCISE_TYPE_HIKING -> "Hike"
+      ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_POOL -> "Pool swim"
+      ExerciseSessionRecord.EXERCISE_TYPE_SWIMMING_OPEN_WATER -> "Open-water swim"
+      ExerciseSessionRecord.EXERCISE_TYPE_STRENGTH_TRAINING -> "Strength training"
+      ExerciseSessionRecord.EXERCISE_TYPE_WEIGHTLIFTING -> "Weightlifting"
+      ExerciseSessionRecord.EXERCISE_TYPE_YOGA -> "Yoga"
+      ExerciseSessionRecord.EXERCISE_TYPE_PILATES -> "Pilates"
+      ExerciseSessionRecord.EXERCISE_TYPE_ELLIPTICAL -> "Elliptical"
+      ExerciseSessionRecord.EXERCISE_TYPE_ROWING,
+      ExerciseSessionRecord.EXERCISE_TYPE_ROWING_MACHINE -> "Rowing"
+      ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING,
+      ExerciseSessionRecord.EXERCISE_TYPE_STAIR_CLIMBING_MACHINE -> "Stair climbing"
+      ExerciseSessionRecord.EXERCISE_TYPE_SOCCER -> "Football"
+      ExerciseSessionRecord.EXERCISE_TYPE_TENNIS -> "Tennis"
+      else -> "Workout"
+    }
+
 }

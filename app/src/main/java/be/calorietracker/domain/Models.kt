@@ -1,8 +1,10 @@
 package be.calorietracker.domain
 
 import java.time.*
+import java.time.temporal.TemporalAdjusters
 import java.util.UUID
 import kotlin.math.abs
+import kotlin.math.round
 import kotlinx.serialization.Serializable
 
 fun newId() = UUID.randomUUID().toString()
@@ -79,6 +81,17 @@ data class Profile(
 )
 
 @Serializable
+data class PlanIntent(
+  val goal: String,
+  val desiredWeeklyKg: Double,
+  val maintenanceKcal: Double,
+  val maintenanceLowKcal: Double = maintenanceKcal * .9,
+  val maintenanceHighKcal: Double = maintenanceKcal * 1.1,
+  val guidedOffsetKcal: Double = 0.0,
+  val calculationVersion: Int = 2,
+)
+
+@Serializable
 data class Plan(
   val id: String = newId(),
   val effective: String = today(),
@@ -89,6 +102,7 @@ data class Plan(
   val carbs: Double,
   val author: String = "user",
   val reason: String = "Manual adjustment",
+  val intent: PlanIntent? = null,
 ) {
   fun validate() {
     require(listOf(kcal, protein, fat, carbs).all { it.isFinite() && it >= 0 })
@@ -101,35 +115,75 @@ data class Plan(
 }
 
 object PlanCalculator {
-  fun suggest(p: Profile): Plan {
-    require(p.age >= 18 && !p.restricted) {
-      "Use a personalised professional target for this profile."
-    }
+  fun maintenance(p: Profile): Double {
     require(
-      p.age <= 120 &&
+      p.age in 18..120 &&
+        !p.restricted &&
         p.heightCm in 80.0..250.0 &&
         p.weightKg in 20.0..400.0 &&
         p.activity in 1.1..2.5
-    )
+    ) {
+      "Use personalised professional targets for this profile."
+    }
     val bmr = 10 * p.weightKg + 6.25 * p.heightCm - 5 * p.age + if (p.sex == "male") 5 else -161
-    val kcal =
-      bmr *
-        p.activity *
-        when (p.goal) {
-          "lose" -> if (p.pace == "slow") 0.95 else if (p.pace == "steady") 0.85 else 0.9
-          "gain" -> if (p.pace == "slow") 1.025 else if (p.pace == "steady") 1.075 else 1.05
-          else -> 1.0
-        }
-    val protein = p.weightKg * 1.4
-    val fat = kcal * 0.3 / 9
+    return bmr * p.activity
+  }
+
+  fun target(
+    p: Profile,
+    adjustmentFraction: Double,
+    offsetKcal: Double = 0.0,
+    proteinPerKg: Double = 1.4,
+    fatFraction: Double = .3,
+    author: String = "calculator",
+    reason: String = "Guided plan",
+    effective: String = today(),
+  ): Plan {
+    val maintenance = maintenance(p)
+    val allowed =
+      when (p.goal) {
+        "lose" -> -.20..-.05
+        "gain" -> .025..0.10
+        else -> 0.0..0.0
+      }
+    require(adjustmentFraction in allowed) { "Choose a target inside the guided range." }
+    require(offsetKcal.isFinite() && offsetKcal in -300.0..300.0)
+    val kcal = maintenance * (1 + adjustmentFraction) + offsetKcal
+    val protein = p.weightKg * proteinPerKg
+    val fat = kcal * fatFraction / 9
+    val carbs = (kcal - protein * 4 - fat * 9) / 4
+    require(carbs >= 0) { "These macro targets leave no room for carbohydrates." }
+    val desiredWeeklyKg = adjustmentFraction * maintenance * 7 / 7700
     return Plan(
+      effective = effective,
       kcal = kcal,
       protein = protein,
       fat = fat,
-      carbs = (kcal - protein * 4 - fat * 9) / 4,
-      author = "calculator",
+      carbs = carbs,
+      author = author,
+      reason = reason,
+      intent =
+        PlanIntent(
+          goal = p.goal,
+          desiredWeeklyKg = desiredWeeklyKg,
+          maintenanceKcal = maintenance,
+          guidedOffsetKcal = offsetKcal,
+        ),
+    )
+  }
+
+  fun suggest(p: Profile): Plan {
+    val fraction =
+      when (p.goal) {
+        "lose" -> if (p.pace == "slow") -.05 else if (p.pace == "steady") -.15 else -.10
+        "gain" -> if (p.pace == "slow") .025 else if (p.pace == "steady") .075 else .05
+        else -> 0.0
+      }
+    return target(
+      p,
+      fraction,
       reason =
-        "Mifflin–St Jeor × ${p.activity}; ${p.goal}; starting estimate, not a measured requirement",
+        "Mifflin–St Jeor × ${p.activity}; ${p.goal}; guided starting estimate with uncertainty",
     )
   }
 }
@@ -247,6 +301,40 @@ data class HealthDay(
 )
 
 @Serializable
+data class WeeklyCheckIn(
+  val id: String = newId(),
+  val periodStart: String,
+  val periodEnd: String,
+  val confirmedDates: List<String> = emptyList(),
+  val weightMeasurementId: String? = null,
+  val weightKg: Double? = null,
+  val note: String = "",
+  val status: String = "completed",
+  val completedAt: String? = now(),
+  val zoneId: String = ZoneId.systemDefault().id,
+  val snoozedUntil: String? = null,
+  val recommendationId: String? = null,
+)
+
+@Serializable
+data class WeeklyRecommendation(
+  val id: String = newId(),
+  val checkInId: String,
+  val created: String = now(),
+  val sufficientEvidence: Boolean,
+  val confirmedDayCount: Int,
+  val averageIntakeKcal: Double? = null,
+  val weightSlopeKgPerWeek: Double? = null,
+  val estimatedMaintenanceKcal: Double? = null,
+  val activityChangePercent: Double? = null,
+  val currentKcal: Double,
+  val proposedKcal: Double? = null,
+  val reason: String,
+  val appliedPlanId: String? = null,
+  val status: String = "pending",
+)
+
+@Serializable
 data class Message(
   val id: String = newId(),
   val role: String,
@@ -256,6 +344,9 @@ data class Message(
   val photoIds: List<String> = emptyList(),
   val kind: String = "message",
   val requestId: String? = null,
+  val providerReasoning: String? = null,
+  val contextKind: String? = null,
+  val contextId: String? = null,
 )
 
 @Serializable
@@ -277,6 +368,7 @@ data class Proposal(
   val status: String = "pending",
   val created: String = now(),
   val appliedIds: List<String> = emptyList(),
+  val requestId: String? = null,
 )
 
 @Serializable
@@ -298,6 +390,8 @@ data class AppState(
   val messages: List<Message> = emptyList(),
   val summaries: List<Summary> = emptyList(),
   val proposals: List<Proposal> = emptyList(),
+  val weeklyCheckIns: List<WeeklyCheckIn> = emptyList(),
+  val weeklyRecommendations: List<WeeklyRecommendation> = emptyList(),
   val water: List<Water> = emptyList(),
   val meals: List<String> = listOf("Breakfast", "Lunch", "Dinner", "Snacks"),
 ) {
@@ -332,7 +426,186 @@ data class AppState(
       require(it.id.matches(Regex("[a-zA-Z0-9-]+")))
       LocalDate.parse(it.date)
     }
+    weeklyCheckIns.forEach {
+      val start = LocalDate.parse(it.periodStart)
+      val end = LocalDate.parse(it.periodEnd)
+      require(!end.isBefore(start) && it.confirmedDates.all { d -> LocalDate.parse(d) in start..end })
+      require(it.weightKg == null || it.weightKg.isFinite() && it.weightKg > 0)
+    }
     require(entries.map { it.id }.distinct().size == entries.size)
+  }
+}
+
+object WeeklyEngine {
+  fun previousPeriod(date: LocalDate = LocalDate.now()): ClosedRange<LocalDate> {
+    val thisMonday = date.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY))
+    return thisMonday.minusDays(7)..thisMonday.minusDays(1)
+  }
+
+  fun due(state: AppState, date: LocalDate = LocalDate.now()): ClosedRange<LocalDate>? {
+    val period = previousPeriod(date)
+    val existing = state.weeklyCheckIns.lastOrNull { it.periodStart == period.start.toString() }
+    if (existing?.status in listOf("completed", "skipped")) return null
+    if (existing?.snoozedUntil?.let { LocalDate.parse(it).isAfter(date) } == true) return null
+    val planStarted = state.plans.any { LocalDate.parse(it.effective) <= period.endInclusive }
+    return period.takeIf { state.profile != null && planStarted }
+  }
+
+  fun evaluate(state: AppState, checkIn: WeeklyCheckIn): WeeklyRecommendation {
+    val reviewDate =
+      checkIn.completedAt
+        ?.let {
+          runCatching {
+              Instant.parse(it).atZone(ZoneId.of(checkIn.zoneId)).toLocalDate()
+            }
+            .getOrNull()
+        }
+        ?: LocalDate.parse(checkIn.periodEnd).plusDays(1)
+    val current = state.plan(reviewDate.toString()) ?: error("No active plan")
+    val completed =
+      (state.weeklyCheckIns.filter { it.status == "completed" } + checkIn)
+        .distinctBy { it.id }
+        .sortedByDescending { it.periodEnd }
+        .take(4)
+        .sortedBy { it.periodStart }
+    val usableWeeks = completed.filter { it.confirmedDates.size >= 4 }
+    val confirmed = usableWeeks.flatMap { it.confirmedDates }.distinct().sorted()
+    val intake =
+      confirmed.mapNotNull { date ->
+        state.entries.filter { it.date == date }.takeIf { it.isNotEmpty() }?.let { entries ->
+          Nutrients.total(entries.map { it.nutrients }).kcal
+        }
+      }
+    val start = usableWeeks.firstOrNull()?.periodStart
+    val end = usableWeeks.lastOrNull()?.periodEnd
+    val weights =
+      if (start == null || end == null) emptyList()
+      else
+        state.measurements
+          .filter { it.type == "Weight" && it.date in start..end }
+          .groupBy { it.date }
+          .map { (date, values) -> LocalDate.parse(date) to values.last().value }
+          .sortedBy { it.first }
+    val coveredWeightWeeks =
+      usableWeeks.count { week ->
+        weights.any { it.first.toString() in week.periodStart..week.periodEnd }
+      }
+    val slope = robustWeeklySlope(weights)
+    val averageIntake = intake.takeIf { it.isNotEmpty() }?.average()
+    val activityChange = activityChange(state, checkIn)
+    val recentPlan =
+      state.plans.any {
+        val effective = LocalDate.parse(it.effective)
+        effective > reviewDate.minusDays(14) && effective <= reviewDate
+      }
+    val baseEvidence =
+      usableWeeks.size >= 3 &&
+        usableWeeks.takeLast(3).all { it.confirmedDates.size >= 4 } &&
+        coveredWeightWeeks >= 3 &&
+        weights.size >= 4 &&
+        intake.size >= 12 &&
+        averageIntake != null &&
+        slope != null
+    val holdReason =
+      when {
+        !baseEvidence ->
+          "Keep your current target while we build a stable three-week picture from complete days and weigh-ins."
+        recentPlan -> "Keep this target for at least 14 days so the last change has time to show in the trend."
+        weightNoise(weights, slope) > .5 ->
+          "Weight readings varied too much around the trend this time, so the app is holding your target until the signal is clearer."
+        activityChange != null && abs(activityChange) > 40 ->
+          "Activity changed a lot this week, so the scale trend is not yet a clean signal for changing food targets."
+        else -> null
+      }
+    if (holdReason != null)
+      return WeeklyRecommendation(
+        checkInId = checkIn.id,
+        sufficientEvidence = baseEvidence,
+        confirmedDayCount = confirmed.size,
+        averageIntakeKcal = averageIntake,
+        weightSlopeKgPerWeek = slope,
+        activityChangePercent = activityChange,
+        currentKcal = current.kcal,
+        reason = holdReason,
+        status = "held",
+      )
+    val desired =
+      current.intent?.desiredWeeklyKg
+        ?: state.profile?.let { p -> (current.kcal - PlanCalculator.maintenance(p)) * 7 / 7700 }
+        ?: 0.0
+    if (abs(slope!! - desired) <= maxOf(.1, abs(desired) * .25))
+      return WeeklyRecommendation(
+        checkInId = checkIn.id,
+        sufficientEvidence = true,
+        confirmedDayCount = confirmed.size,
+        averageIntakeKcal = averageIntake,
+        weightSlopeKgPerWeek = slope,
+        estimatedMaintenanceKcal = averageIntake!! - slope * 7700 / 7,
+        activityChangePercent = activityChange,
+        currentKcal = current.kcal,
+        reason = "Your measured trend is close to the pace you selected. Keep the current target.",
+        status = "held",
+      )
+    val maintenance = averageIntake!! - slope * 7700 / 7
+    val observedTarget = maintenance + desired * 7700 / 7
+    val blended = current.kcal + (observedTarget - current.kcal) * .5
+    var delta = (blended - current.kcal).coerceIn(-150.0, 150.0)
+    delta = round(delta / 25) * 25
+    if (abs(delta) < 75) delta = 0.0
+    val proposed = (current.kcal + delta).takeIf { delta != 0.0 }
+    return WeeklyRecommendation(
+      checkInId = checkIn.id,
+      sufficientEvidence = true,
+      confirmedDayCount = confirmed.size,
+      averageIntakeKcal = averageIntake,
+      weightSlopeKgPerWeek = slope,
+      estimatedMaintenanceKcal = maintenance,
+      activityChangePercent = activityChange,
+      currentKcal = current.kcal,
+      proposedKcal = proposed,
+      reason =
+        if (proposed == null) "The evidence suggests only a very small difference, so keep the current target."
+        else "Your confirmed intake and multi-week weight trend support a conservative ${abs(delta).toInt()} kcal adjustment.",
+      status = if (proposed == null) "held" else "pending",
+    )
+  }
+
+  private fun robustWeeklySlope(weights: List<Pair<LocalDate, Double>>): Double? {
+    if (weights.size < 4) return null
+    val slopes =
+      weights.flatMapIndexed { i, a ->
+        weights.drop(i + 1).mapNotNull { b ->
+          val days = Duration.between(a.first.atStartOfDay(), b.first.atStartOfDay()).toDays()
+          if (days == 0L) null else (b.second - a.second) / days * 7
+        }
+      }.sorted()
+    return slopes.takeIf { it.isNotEmpty() }?.let { it[it.size / 2] }
+  }
+
+  private fun weightNoise(weights: List<Pair<LocalDate, Double>>, weeklySlope: Double): Double {
+    if (weights.size < 4) return Double.POSITIVE_INFINITY
+    val origin = weights.first().first
+    val residuals =
+      weights
+        .map { (date, value) ->
+          value - Duration.between(origin.atStartOfDay(), date.atStartOfDay()).toDays() * weeklySlope / 7
+        }
+        .sorted()
+    val median = residuals[residuals.size / 2]
+    return residuals.map { abs(it - median) }.sorted().let { it[it.size / 2] }
+  }
+
+  private fun activityChange(state: AppState, checkIn: WeeklyCheckIn): Double? {
+    fun average(from: LocalDate, to: LocalDate): Double? =
+      state.health
+        .filter { LocalDate.parse(it.date) in from..to }
+        .mapNotNull { it.activeKcal }
+        .takeIf { it.isNotEmpty() }
+        ?.average()
+    val end = LocalDate.parse(checkIn.periodEnd)
+    val current = average(end.minusDays(6), end) ?: return null
+    val previous = average(end.minusDays(20), end.minusDays(7)) ?: return null
+    return if (previous <= 0) null else (current - previous) / previous * 100
   }
 }
 
@@ -368,7 +641,7 @@ object ChatContext {
       .asReversed()
       .take(50)
       .takeWhile { m ->
-        val size = m.text.take(18000).length + 128
+        val size = m.text.take(18000).length + m.providerReasoning.orEmpty().take(50000).length + 128
         (used + size <= budget).also { if (it) used += size }
       }
       .asReversed()
@@ -377,7 +650,7 @@ object ChatContext {
   fun oldestBatch(messages: List<Message>, budget: Int = 70000): List<Message> {
     var used = 0
     return messages.takeWhile { m ->
-      val size = m.text.length + 128
+      val size = m.text.length + m.providerReasoning.orEmpty().length + 128
       (used + size <= budget).also { if (it) used += size }
     }
   }
@@ -391,6 +664,10 @@ data class Workout(
   val start: String,
   val end: String,
   val source: String,
+  val typeName: String = "Workout",
+  val sourceLabel: String = "Health Connect",
+  val distanceMetres: Double? = null,
+  val activeKcal: Double? = null,
 )
 
 /**

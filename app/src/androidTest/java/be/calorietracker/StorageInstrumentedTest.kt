@@ -49,6 +49,40 @@ class StorageInstrumentedTest {
   }
 
   @Test
+  fun weeklyRecommendationApplyIsIdempotentAndPreservesOldPlan() = runBlocking {
+    val old =
+      Plan(
+        effective = "2026-01-01",
+        kcal = 2000.0,
+        protein = 100.0,
+        fat = 80.0,
+        carbs = 220.0,
+      )
+    val recommendation =
+      WeeklyRecommendation(
+        id = "weekly-recommendation",
+        checkInId = "weekly-check-in",
+        sufficientEvidence = true,
+        confirmedDayCount = 12,
+        currentKcal = 2000.0,
+        proposedKcal = 1850.0,
+        reason = "Tested multi-week trend",
+      )
+    store.update {
+      it.copy(
+        profile = Profile(goal = "lose"),
+        plans = listOf(old),
+        weeklyRecommendations = listOf(recommendation),
+      )
+    }
+    coroutineScope { repeat(10) { launch { store.applyWeeklyRecommendation(recommendation.id) } } }
+    assertEquals(2, store.state.value.plans.size)
+    assertEquals(old, store.state.value.plan("2026-01-01"))
+    assertEquals(1850.0, store.state.value.plan()!!.kcal, 0.0)
+    assertEquals("applied", store.state.value.weeklyRecommendations.single().status)
+  }
+
+  @Test
   fun deletedMessagesInvalidateCompaction() = runBlocking {
     val message = Message(role = "user", text = "Private test message")
     store.update {

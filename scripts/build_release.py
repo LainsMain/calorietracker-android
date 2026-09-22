@@ -1,4 +1,4 @@
-"""Build locally with the owner-held key. Usage: python scripts/build_release.py 1.0.0 2"""
+"""Build locally with the owner-held key. Usage: python scripts/build_release.py 1.1.0 3"""
 import json,os,subprocess,sys
 from pathlib import Path
 credentials=Path.home()/'.local/share/calorietracker/signing/credentials.json'

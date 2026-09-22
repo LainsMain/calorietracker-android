@@ -11,10 +11,15 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import be.calorietracker.data.*
 import be.calorietracker.domain.*
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlinx.serialization.encodeToString
 
 @Composable
@@ -24,10 +29,15 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
   val busy by vm.coach.busy.collectAsStateWithLifecycle()
   val streaming by vm.coach.streaming.collectAsStateWithLifecycle()
   val usage by vm.coach.usage.collectAsStateWithLifecycle()
+  val phase by vm.coach.phase.collectAsStateWithLifecycle()
   var selected by remember { mutableStateOf<Proposal?>(null) }
   var delete by remember { mutableStateOf<Message?>(null) }
   var query by remember { mutableStateOf("") }
   var showSearch by remember { mutableStateOf(false) }
+  var showInfo by remember { mutableStateOf(false) }
+  val clipboard = LocalClipboardManager.current
+  val visibleMessages =
+    s.messages.filter { it.kind == "message" && (query.isBlank() || it.text.contains(query, true)) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
       if (uri != null) vm.run { attachments += vm.store.importPhoto(uri, "chat").id }
@@ -40,6 +50,7 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
     ) {
       item {
         PageTitle("One conversation, your whole journey", "Your coach") {
+          IconButton(onClick = { showInfo = true }) { Icon(Icons.Rounded.Info, "Conversation information") }
           IconButton(onClick = { showSearch = !showSearch }) {
             Icon(Icons.Rounded.Search, "Search conversation")
           }
@@ -54,9 +65,9 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
           )
           Spacer(Modifier.height(12.dp))
           listOf(
-              "How did I eat this week?",
-              "Help me understand my weight trend",
-              "What should I focus on today?",
+              if (s.weeklyCheckIns.any { it.status == "completed" }) "Explain my latest weekly check-in" else "How did I eat this week?",
+              if (s.health.any { it.workouts.isNotEmpty() }) "How does my recent activity fit my goal?" else "Help me understand my weight trend",
+              "What is one practical focus for today?",
             )
             .forEach { prompt ->
               OutlinedButton(onClick = { text = prompt }, modifier = Modifier.fillMaxWidth()) {
@@ -64,77 +75,56 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
               }
             }
         }
-      items(
-        s.messages.filter {
-          it.kind == "message" && (query.isBlank() || it.text.contains(query, true))
-        },
-        key = { it.id },
-      ) { m ->
-        Surface(
-          shape = RoundedCornerShape(24.dp),
-          color =
-            if (m.role == "user") MaterialTheme.colorScheme.primaryContainer
-            else MaterialTheme.colorScheme.surfaceContainer,
-        ) {
-          Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
-            Text(
-              if (m.role == "user") "YOU" else "COACH",
-              style = MaterialTheme.typography.labelSmall,
-            )
-            m.photoIds.forEach { LocalPhoto(vm, it, Modifier.fillMaxWidth().height(160.dp)) }
-            Text(m.text)
-            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-              Text(
-                m.timestamp.take(16).replace("T", " ") + " UTC",
-                Modifier.weight(1f),
-                style = MaterialTheme.typography.labelSmall,
-              )
-              IconButton(onClick = { delete = m }, modifier = Modifier.size(32.dp)) {
-                Icon(Icons.Rounded.DeleteOutline, "Delete message", Modifier.size(18.dp))
+      itemsIndexed(
+        visibleMessages,
+        key = { _, item -> item.id },
+      ) { index, m ->
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          val day = messageDay(m)
+          if (index == 0 || messageDay(visibleMessages[index - 1]) != day)
+            Text(day, Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          Surface(
+            shape = RoundedCornerShape(24.dp),
+            color = if (m.role == "user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+          ) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+              Text(if (m.role == "user") "You" else "Coach", style = MaterialTheme.typography.labelSmall)
+              m.photoIds.forEach { LocalPhoto(vm, it, Modifier.fillMaxWidth().height(180.dp)) }
+              if (m.role == "assistant") MarkdownText(m.text) else Text(m.text)
+              Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                Text(messageTime(m), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
+                IconButton({ clipboard.setText(AnnotatedString(m.text)) }, Modifier.size(32.dp)) {
+                  Icon(Icons.Rounded.ContentCopy, "Copy message", Modifier.size(18.dp))
+                }
+                IconButton(onClick = { delete = m }, modifier = Modifier.size(32.dp)) {
+                  Icon(Icons.Rounded.DeleteOutline, "Delete message", Modifier.size(18.dp))
+                }
               }
             }
           }
-        }
-      }
-      items(s.proposals.filter { it.status in listOf("pending", "applied") }) { p ->
-        Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
-          Text(
-            if (p.status == "pending") "Review ${p.type}" else "Applied ${p.type}",
-            style = MaterialTheme.typography.titleLarge,
-          )
-          Text(p.explanation)
-          Text(proposalDescription(p))
-          if (p.status == "pending")
-            Row {
-              Button(onClick = { vm.run { vm.store.applyProposal(p.id) } }) { Text("Apply") }
-              TextButton(onClick = { selected = p }) { Text("Edit") }
-              TextButton(
-                onClick = {
-                  vm.run {
-                    vm.store.update { s ->
-                      s.copy(
-                        proposals =
-                          s.proposals.map {
-                            if (it.id == p.id) it.copy(status = "dismissed") else it
-                          }
-                      )
-                    }
-                  }
-                }
-              ) {
-                Text("Dismiss")
-              }
+          if (m.role == "assistant" && m.contextKind == "weekly_check_in") {
+            Panel(tint = MaterialTheme.colorScheme.tertiaryContainer) {
+              Text("Weekly insight", style = MaterialTheme.typography.titleMedium)
+              Text("This explanation uses the saved weekly calculation. Any target change still needs your approval on Today.")
             }
-          else TextButton(onClick = { vm.run { vm.store.undoProposal(p.id) } }) { Text("Undo") }
+          }
+          if (m.requestId != null)
+            s.proposals
+              .filter {
+                it.requestId == m.requestId && it.status in listOf("pending", "applied")
+              }
+              .forEach { p -> ProposalCard(vm, p) { selected = p } }
         }
       }
+      items(s.proposals.filter { it.requestId == null && it.status in listOf("pending", "applied") }) { p -> ProposalCard(vm, p) { selected = p } }
       if (busy)
         item {
           Panel {
-            if (streaming.isNotBlank()) Text(streaming)
+            Text(phase.ifBlank { "Thinking" }, style = MaterialTheme.typography.titleMedium)
+            LinearProgressIndicator(Modifier.fillMaxWidth())
+            if (streaming.isNotBlank()) MarkdownText(streaming)
             else {
-              LinearProgressIndicator(Modifier.fillMaxWidth())
-              Text("Reading your context…")
+              Text("Your coach is reviewing the relevant context before replying.")
             }
           }
         }
@@ -155,15 +145,6 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
             )
             Button(onClick = { vm.retryCoach() }) { Text("Retry response") }
           }
-        }
-      if (usage.isNotBlank())
-        item { Text("Last request: $usage", style = MaterialTheme.typography.labelSmall) }
-      if (s.summaries.isNotEmpty())
-        item {
-          Text(
-            "${s.summaries.size} context summaries · original messages remain searchable",
-            style = MaterialTheme.typography.bodySmall,
-          )
         }
     }
     if (attachments.isNotEmpty())
@@ -202,6 +183,20 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
         }
     }
   }
+  if (showInfo)
+    AlertDialog(
+      onDismissRequest = { showInfo = false },
+      title = { Text("Conversation information") },
+      text = {
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text("${s.messages.count { it.kind == "message" }} saved messages")
+          Text("${s.summaries.size} encrypted context summaries; original messages remain searchable.")
+          Text(if (usage.isBlank()) "No token usage available for this session." else "Last request usage: $usage")
+          Text("DeepSeek Flash uses high-effort thinking. Private reasoning is never shown in the transcript.")
+        }
+      },
+      confirmButton = { TextButton({ showInfo = false }) { Text("Done") } },
+    )
   delete?.let { m ->
     AlertDialog(
       onDismissRequest = { delete = null },
@@ -229,7 +224,8 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
       "plan" ->
         PlanEditor(
           codec.decodeFromString(p.payload),
-          { selected = null },
+          profile = s.profile,
+          onDismiss = { selected = null },
           onSave = { v ->
             vm.run {
               vm.store.update { s ->
@@ -284,6 +280,59 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
     }
   }
 }
+
+@Composable
+private fun ProposalCard(vm: TrackerViewModel, proposal: Proposal, onEdit: () -> Unit) {
+  Panel(
+    tint =
+      if (proposal.status == "applied") MaterialTheme.colorScheme.secondaryContainer
+      else MaterialTheme.colorScheme.primaryContainer
+  ) {
+    Text(
+      if (proposal.status == "applied") "Applied change" else "Ready for your review",
+      style = MaterialTheme.typography.titleMedium,
+    )
+    Text(proposalDescription(proposal))
+    if (proposal.status == "pending") {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { vm.run { vm.store.applyProposal(proposal.id) } }) { Text("Apply") }
+        OutlinedButton(onClick = onEdit) { Text("Edit") }
+        TextButton(
+          onClick = {
+            vm.run {
+              vm.store.update { state ->
+                state.copy(
+                  proposals =
+                    state.proposals.map {
+                      if (it.id == proposal.id) it.copy(status = "dismissed") else it
+                    }
+                )
+              }
+            }
+          }
+        ) {
+          Text("Dismiss")
+        }
+      }
+    } else {
+      TextButton(onClick = { vm.run { vm.store.undoProposal(proposal.id) } }) { Text("Undo") }
+    }
+  }
+}
+
+private fun messageDay(message: Message): String =
+  runCatching {
+      DateTimeFormatter.ofPattern("EEEE, d MMMM")
+        .format(Instant.parse(message.timestamp).atZone(ZoneId.systemDefault()))
+    }
+    .getOrDefault("Saved conversation")
+
+private fun messageTime(message: Message): String =
+  runCatching {
+      DateTimeFormatter.ofPattern("HH:mm")
+        .format(Instant.parse(message.timestamp).atZone(ZoneId.systemDefault()))
+    }
+    .getOrDefault("")
 
 private fun proposalDescription(p: Proposal): String =
   try {

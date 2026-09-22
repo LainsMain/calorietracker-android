@@ -10,23 +10,24 @@ Online search, AI requests and update downloads use the relevant external provid
 
 ## What you can do
 
-- Set up your goals and review estimated calorie/macro targets; edit plans at any time.
+- Build or revise a plan through a guided estimate, pace, fine-tuning, macro and preview flow.
+- Complete a local weekly check-in; stable multi-week evidence can suggest a reviewed target change.
 - Search Open Food Facts, scan EAN/UPC barcodes, use recent/favourite foods, or create custom foods.
 - Search **2,887 bundled CoFID foods offline**, with common Dutch and French search aliases.
 - Log grams, millilitres or defined servings; keep unknown nutrients distinct from zero.
 - Build recipes with a **finished batch weight** and log any gram-based portion.
 - Keep historical food/recipe snapshots and effective-dated plan versions.
 - Track water, weight trends, measurements and encrypted progress photographs.
-- Read workouts, steps, distance, energy and weight through Health Connect.
-- Chat with DeepSeek using your own API key, attach images, retrieve past records, and review
-  proposed food entries, recipes or plan changes before applying them.
+- See readable Health Connect runs and workouts with session distance, energy and friendly source names.
+- Chat with DeepSeek Flash in high-effort thinking mode using your own API key. Replies render as
+  safe Markdown and actions appear as review cards tied to the relevant message.
 - Export/restore password-encrypted backups, enable app locking, use reminders and a quick-log widget.
 - Download verified updates with progress, cancellation/retry and Android installation confirmation.
 
 ## First use
 
 1. Download the APK from Releases and approve its installation in Android.
-2. Complete setup and review the suggested targets, or enter your own.
+2. Complete the guided setup, choose a sustainable pace, and preview the suggested targets.
 3. In Settings, connect Health Connect if you use a compatible fitness app.
 4. Optionally enter a DeepSeek API key. AI requests are billed to that key; selected messages,
    images and relevant diary/health context are sent to DeepSeek.
@@ -65,11 +66,12 @@ and [data licences](THIRD_PARTY_NOTICES.md).
   eligible adults; clinical/pregnancy/breastfeeding profiles use manually supplied targets.
 - Food photo portions are estimates and require review. Progress photos do not measure body fat.
 - Health Connect access depends on device/provider support and granted permissions. Activity
-  does not automatically increase food targets. The readable window is 30 days, or 90 with
+  informs weekly trend interpretation and never increases today's food budget. The readable window is 30 days, or 90 with
   optional history access.
 - The coach searches app records and food databases, not the general web. An internet connection,
-  supported DeepSeek model and funded API key are required. Original timestamped chat remains
-  local; context compaction does not delete it.
+  supported DeepSeek model and funded API key are required. Provider reasoning is stored encrypted
+  only for protocol continuity and is never shown. Original timestamped chat remains local;
+  context compaction does not delete it.
 - APK updates require Android's system installation approval. Store distribution is outside
   this release's scope.
 

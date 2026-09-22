@@ -4,8 +4,8 @@ Single-activity native Kotlin/Compose application, Hilt construction, immutable 
 models, a Room encrypted aggregate vault, DataStore display preferences, and WorkManager
 periodic work. Kotlin coroutines/StateFlow connect repositories to the UI. No backend.
 
-- `domain`: deterministic portion math, recipe yields, plan estimates, chronology,
-  conservative evidence summaries and bounded chat-context selection.
+- `domain`: deterministic portion math, recipe yields, guided plan estimates, Monday–Sunday
+  check-in evidence and adaptation, chronology, and bounded chat-context selection.
 - `data`: AES-GCM/Keystore, Room persistence and atomic/idempotent reviewed actions.
 - `services`: independently bounded food providers, DeepSeek streaming/tool loop,
   Health Connect reconciliation, password backups and signed-APK verification.
@@ -23,7 +23,8 @@ Food entries embed their nutrient snapshot. Recipe versions embed their ingredie
 snapshots. Food-provider changes, recipe edits and target changes cannot rewrite diary
 history. Unknown/trace nutrient values propagate as unknown, including recipe totals.
 
-The AI can query and prepare actions but has no apply tool. Only explicit UI actions can
+The AI can query and prepare actions but has no apply tool. Weekly target math stays in the
+deterministic engine; the coach may only mirror a supported pending result. Only explicit UI actions can
 call `Store.applyProposal`; a mutex and status transition make repeated taps idempotent.
 Each applied action has an audit event and undo. Numeric computations remain in app code.
 Untrusted provider/model content never becomes executable code. All original chat history
@@ -32,7 +33,9 @@ is retained locally; compaction adds date-ranged summaries and retrieval remains
 Health Connect uses permission-scoped aggregates (respecting platform source priority),
 record pagination and a full reconciliation of the readable window. Changes tokens are
 refreshed and expired tokens recover through the same snapshot path. Reconciliation
-replaces data, so repeated sync and source deletions do not accumulate totals.
+replaces data, so repeated sync and source deletions do not accumulate totals. Exercise-session
+distance and active energy are aggregated over the session window and source, while raw source
+identifiers remain internal to reconciliation and optional diagnostics.
 
 Update manifests are public. The downloaded APK must match its SHA-256, expected byte count,
 application ID, newer version and the installed app's signing certificate. Android owns

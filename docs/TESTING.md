@@ -6,13 +6,15 @@
 Android integration contracts. The tests cover recipe yields and water loss, immutable
 food/recipe snapshots, explicit unit conversion, unknown nutrients, historical plan
 selection, macro reconciliation, adult/restricted-profile boundaries, Brussels DST,
-weight evidence requirements, backup authentication, OFF prepared/liquid products,
-chronological bounded context, and mirrored-workout deduplication.
+guided target bounds, weekly recurrence, evidence thresholds, robust slope/noise holds,
+deadband and adjustment cap, backup authentication, OFF prepared/liquid products, safe
+Markdown, fragmented thinking/tool streams, bounded context, and workout deduplication.
 
 `ANDROID_SERIAL=emulator-5554 ./gradlew :app:connectedDebugAndroidTest` exercises real
-Keystore/Room encryption, idempotent proposal approval/undo, message deletion/summary
-invalidation, backup replacement and invalid-backup recovery. The Compose journey visits
-all five destinations, captures synthetic screenshots, creates a custom food, and logs it.
+Keystore/Room encryption, idempotent proposal and weekly approval, message deletion/summary
+invalidation, backup replacement and invalid-backup recovery. The Compose journeys visit
+all five destinations, render a Markdown reply and imported run, exercise proposal apply/undo,
+open guided planning and weekly review, capture screenshots, create a custom food, and log it.
 The Health Connect test seeds test-only steps/weight records, compares aggregation against
 platform source-priority behaviour, repeats sync, then deletes source records and checks
 reconciliation. It runs on API 34+; debug-only write permissions are absent from releases.
@@ -28,7 +30,8 @@ Missing product/unknown nutrient handling is covered separately. This is samplin
 claim that every Belgian retailer/product is present.
 
 DeepSeek protocol integration is implemented against its documented chat-completions,
-vision and function-tool interface. A funded user API key is required for a real paid
+thinking, vision and function-tool interface. Fragmented reasoning/tool deltas are tested
+locally; reasoning is replayed when required and never rendered. A funded user API key is required for a real paid
 model call. No key is bundled or borrowed from local unrelated projects. Live model
 quality, images and tool decisions must be assessed with the user's configured key.
 

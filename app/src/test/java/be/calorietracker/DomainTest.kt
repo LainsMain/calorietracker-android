@@ -114,6 +114,40 @@ class DomainTest {
   }
 
   @Test
+  fun guidedTargetsUseConservativeRangesAndMetadata() {
+    val loss = Profile(age = 35, heightCm = 170.0, weightKg = 80.0, goal = "lose")
+    val maintenance = PlanCalculator.maintenance(loss)
+    val gentle = PlanCalculator.target(loss, -.05)
+    val assertive = PlanCalculator.target(loss, -.20, offsetKcal = -300.0)
+    assertEquals(maintenance * .95, gentle.kcal, .001)
+    assertEquals(maintenance * .80 - 300.0, assertive.kcal, .001)
+    assertEquals(maintenance * .9, gentle.intent!!.maintenanceLowKcal, .001)
+    assertEquals(maintenance * 1.1, gentle.intent!!.maintenanceHighKcal, .001)
+    gentle.validate()
+    assertive.validate()
+
+    val gain = loss.copy(goal = "gain")
+    assertEquals(
+      PlanCalculator.maintenance(gain) * 1.025,
+      PlanCalculator.target(gain, .025).kcal,
+      .001,
+    )
+    assertEquals(
+      PlanCalculator.maintenance(gain) * 1.10,
+      PlanCalculator.target(gain, .10).kcal,
+      .001,
+    )
+  }
+
+  @Test
+  fun guidedTargetRejectsOutsideRange() {
+    val profile = Profile(age = 35, weightKg = 80.0, goal = "lose")
+    assertThrows(IllegalArgumentException::class.java) {
+      PlanCalculator.target(profile, -.21)
+    }
+  }
+
+  @Test
   fun diaryDateSurvivesTimezoneChange() {
     val entry =
       Entry(
@@ -131,6 +165,139 @@ class DomainTest {
       Duration.between(day.atStartOfDay(brussels), day.plusDays(1).atStartOfDay(brussels))
         .toHours(),
     )
+  }
+
+  @Test
+  fun weeklyBoundaryIsMondayToSundayAcrossBrusselsDst() {
+    val period = WeeklyEngine.previousPeriod(LocalDate.of(2026, 3, 30))
+    assertEquals(LocalDate.of(2026, 3, 23), period.start)
+    assertEquals(LocalDate.of(2026, 3, 29), period.endInclusive)
+    val brussels = ZoneId.of("Europe/Brussels")
+    assertEquals(
+      167,
+      Duration.between(
+          period.start.atStartOfDay(brussels),
+          period.endInclusive.plusDays(1).atStartOfDay(brussels),
+        )
+        .toHours(),
+    )
+  }
+
+  @Test
+  fun weeklyPromptRecursAndHonoursSnoozeAndSkip() {
+    val date = LocalDate.of(2026, 9, 21)
+    val profile = Profile(goal = "lose")
+    val plan = PlanCalculator.suggest(profile).copy(effective = "2026-08-01")
+    val state = AppState(profile = profile, plans = listOf(plan))
+    val period = requireNotNull(WeeklyEngine.due(state, date))
+    val snoozed =
+      state.copy(
+        weeklyCheckIns =
+          listOf(
+            WeeklyCheckIn(
+              periodStart = period.start.toString(),
+              periodEnd = period.endInclusive.toString(),
+              status = "snoozed",
+              completedAt = null,
+              snoozedUntil = date.plusDays(1).toString(),
+            )
+          )
+      )
+    assertNull(WeeklyEngine.due(snoozed, date))
+    assertNotNull(WeeklyEngine.due(snoozed, date.plusDays(1)))
+    assertNull(
+      WeeklyEngine.due(
+        state.copy(
+          weeklyCheckIns =
+            listOf(
+              WeeklyCheckIn(
+                periodStart = period.start.toString(),
+                periodEnd = period.endInclusive.toString(),
+                status = "skipped",
+              )
+            )
+        ),
+        date,
+      )
+    )
+    assertNotNull(WeeklyEngine.due(snoozed, date.plusWeeks(1)))
+  }
+
+  @Test
+  fun weeklyReviewRequiresThreeCompleteWeeks() {
+    val state = weeklyState(weeks = 1, weeklyWeightChange = 0.0, desiredWeeklyChange = -.5)
+    val checkIn = weeklyCheckIn(1)
+    val result = WeeklyEngine.evaluate(state, checkIn)
+    assertFalse(result.sufficientEvidence)
+    assertNull(result.proposedKcal)
+    assertEquals("held", result.status)
+  }
+
+  @Test
+  fun weeklyRecommendationUsesDeadbandAndCap() {
+    val capped =
+      WeeklyEngine.evaluate(
+        weeklyState(weeks = 2, weeklyWeightChange = 0.0, desiredWeeklyChange = -.5),
+        weeklyCheckIn(2),
+      )
+    assertEquals(1850.0, capped.proposedKcal!!, 0.0)
+
+    val deadband =
+      WeeklyEngine.evaluate(
+        weeklyState(weeks = 2, weeklyWeightChange = .11, desiredWeeklyChange = 0.0),
+        weeklyCheckIn(2),
+      )
+    assertNull(deadband.proposedKcal)
+    assertEquals("held", deadband.status)
+  }
+
+  @Test
+  fun weeklyReviewHoldsWhenActivityChangesSharply() {
+    val base = weeklyState(weeks = 2, weeklyWeightChange = 0.0, desiredWeeklyChange = -.5)
+    val health =
+      (0L..20L).map { index ->
+        val date = LocalDate.of(2026, 8, 30).minusDays(index)
+        HealthDay(
+          date = date.toString(),
+          activeKcal = if (index <= 6) 500.0 else 200.0,
+        )
+      }
+    val result = WeeklyEngine.evaluate(base.copy(health = health), weeklyCheckIn(2))
+    assertNull(result.proposedKcal)
+    assertTrue(result.reason.contains("Activity changed"))
+  }
+
+  @Test
+  fun weeklyReviewHoldsAfterARecentPlanChange() {
+    val base = weeklyState(weeks = 2, weeklyWeightChange = 0.0, desiredWeeklyChange = -.5)
+    val recent =
+      base.plans.single().copy(
+        id = "recent-plan",
+        effective = "2026-08-25",
+        created = "2026-08-25T08:00:00Z",
+      )
+    val checkIn = weeklyCheckIn(2).copy(completedAt = "2026-08-31T08:00:00Z", zoneId = "Europe/Brussels")
+    val result = WeeklyEngine.evaluate(base.copy(plans = base.plans + recent), checkIn)
+    assertNull(result.proposedKcal)
+    assertTrue(result.reason.contains("14 days"))
+  }
+
+  @Test
+  fun weeklyReviewHoldsWhenWeightNoiseIsTooHigh() {
+    val base = weeklyState(weeks = 2, weeklyWeightChange = 0.0, desiredWeeklyChange = -.5)
+    val noisy =
+      base.copy(
+        measurements =
+          listOf(0L to 80.0, 7L to 82.0, 14L to 78.0, 20L to 81.5).map { (day, value) ->
+            Measurement(
+              date = LocalDate.of(2026, 8, 10).plusDays(day).toString(),
+              value = value,
+            )
+          }
+      )
+    val result = WeeklyEngine.evaluate(noisy, weeklyCheckIn(2))
+    assertNull(result.proposedKcal)
+    assertTrue(result.reason.contains("varied too much"))
   }
 
   @Test
@@ -174,5 +341,63 @@ class DomainTest {
   @Test(expected = IllegalArgumentException::class)
   fun estimatedRecipeMassRequiresLiquidDensity() {
     Ingredient(food.copy(basis = "ml"), 100.0, "ml").massGrams()
+  }
+
+  private fun weeklyCheckIn(index: Int): WeeklyCheckIn {
+    val start = LocalDate.of(2026, 8, 10).plusWeeks(index.toLong())
+    return WeeklyCheckIn(
+      id = "week-$index",
+      periodStart = start.toString(),
+      periodEnd = start.plusDays(6).toString(),
+      confirmedDates = (0L..3L).map { start.plusDays(it).toString() },
+    )
+  }
+
+  private fun weeklyState(
+    weeks: Int,
+    weeklyWeightChange: Double,
+    desiredWeeklyChange: Double,
+  ): AppState {
+    val profile = Profile(age = 35, weightKg = 80.0, goal = if (desiredWeeklyChange < 0) "lose" else "maintain")
+    val plan =
+      Plan(
+        effective = "2026-07-01",
+        created = "2026-07-01T00:00:00Z",
+        kcal = 2000.0,
+        protein = 100.0,
+        fat = 80.0,
+        carbs = 220.0,
+        intent =
+          PlanIntent(
+            goal = profile.goal,
+            desiredWeeklyKg = desiredWeeklyChange,
+            maintenanceKcal = 2400.0,
+          ),
+      )
+    val checkIns = (0 until weeks).map(::weeklyCheckIn)
+    val entries =
+      (checkIns + weeklyCheckIn(2)).flatMap { checkIn ->
+        checkIn.confirmedDates.map { date ->
+          Entry(
+            date = date,
+            food = Food(name = "Complete day", nutrients = Nutrients(kcal = 2000.0)),
+            amount = 100.0,
+          )
+        }
+      }
+    val measurements =
+      listOf(0L, 7L, 14L, 20L).map { day ->
+        Measurement(
+          date = LocalDate.of(2026, 8, 10).plusDays(day).toString(),
+          value = 80.0 + weeklyWeightChange * day / 7.0,
+        )
+      }
+    return AppState(
+      profile = profile,
+      plans = listOf(plan),
+      entries = entries,
+      measurements = measurements,
+      weeklyCheckIns = checkIns,
+    )
   }
 }

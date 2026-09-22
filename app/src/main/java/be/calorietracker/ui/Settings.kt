@@ -17,6 +17,9 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import be.calorietracker.BuildConfig
 import be.calorietracker.domain.*
 import be.calorietracker.services.Release
+import java.time.Instant
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 
 @Composable
 fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
@@ -27,12 +30,16 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
   var profileEditor by remember { mutableStateOf(false) }
   var key by remember { mutableStateOf("") }
   var hasKey by remember { mutableStateOf(false) }
-  var model by remember { mutableStateOf("deepseek-flash") }
   var biometric by remember { mutableStateOf(false) }
   var reminders by remember { mutableStateOf(false) }
   var password by remember { mutableStateOf("") }
   var includePhotos by remember { mutableStateOf(true) }
   var status by remember { mutableStateOf("") }
+  var healthGranted by remember { mutableStateOf(emptySet<String>()) }
+  var healthSync by remember { mutableStateOf("") }
+  var healthSources by remember { mutableStateOf("") }
+  var healthError by remember { mutableStateOf("") }
+  var healthDiagnostics by remember { mutableStateOf(false) }
   var delete by remember { mutableStateOf(false) }
   var restoreUri by remember { mutableStateOf<Uri?>(null) }
   var meals by remember { mutableStateOf(vm.state.value.meals.joinToString(", ")) }
@@ -41,9 +48,12 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     dynamicColour = vm.prefs.get("dynamicColour") == "true"
     energyUnit = vm.prefs.get("energyUnit", "kcal")
     hasKey = vm.prefs.apiKey().isNotBlank()
-    model = vm.prefs.get("model", "deepseek-flash")
     biometric = vm.prefs.get("biometric") == "true"
     reminders = vm.prefs.get("reminders") == "true"
+    healthGranted = vm.health.granted()
+    healthSync = vm.prefs.get("healthSync")
+    healthSources = vm.prefs.get("healthSources")
+    healthError = vm.prefs.get("healthError")
   }
   val export =
     rememberLauncherForActivityResult(
@@ -65,8 +75,15 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     ) { granted ->
       vm.run {
         vm.prefs.set("healthEnabled", (granted.isNotEmpty()).toString())
-        vm.health.sync()
-        status = "Health Connect refreshed. Only granted data types are imported."
+        try {
+          vm.health.sync()
+          status = "Health Connect refreshed. Only granted data types are imported."
+        } finally {
+          healthGranted = vm.health.granted()
+          healthSync = vm.prefs.get("healthSync")
+          healthSources = vm.prefs.get("healthSources")
+          healthError = vm.prefs.get("healthError")
+        }
       }
     }
   val notifications =
@@ -90,17 +107,16 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       singleLine = true,
       modifier = Modifier.fillMaxWidth(),
     )
-    Field("Model", model, { model = it })
+    Text("Model: deepseek-flash · thinking mode", style = MaterialTheme.typography.bodySmall)
     Button(
       onClick = {
         vm.run {
-          require(model.isNotBlank())
           if (key.isNotBlank()) {
             vm.prefs.saveKey(key)
             key = ""
             hasKey = true
           }
-          vm.prefs.set("model", model)
+          vm.prefs.set("model", "deepseek-flash")
           status = "Coach settings saved."
         }
       }
@@ -121,8 +137,30 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       }
     Section("Health & activity")
     Text(
-      "Read steps, workouts, active/total energy, distance and weight from Health Connect. We reconcile the last 30 days (90 with history access); imported exercise does not raise your food allowance."
+      "Runs, workouts, steps, distance, energy, and weight can be read from Health Connect. Activity helps explain your weekly trend; it never raises today's food budget."
     )
+    val stale = remember(healthSync) {
+      healthSync.isNotBlank() && runCatching { java.time.Duration.between(Instant.parse(healthSync), Instant.now()).toHours() > 24 }.getOrDefault(false)
+    }
+    Panel(tint = if (healthGranted.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
+      Text(
+        when {
+          !vm.health.available() -> "Health Connect unavailable"
+          healthError.contains("revoked", true) -> "Permissions revoked"
+          healthError.isNotBlank() -> "Refresh failed"
+          healthGranted.isEmpty() -> "Not connected"
+          stale -> "Connected · data may be stale"
+          else -> "Connected"
+        },
+        style = MaterialTheme.typography.titleMedium,
+      )
+      if (healthGranted.isNotEmpty()) {
+        Text("${healthGranted.intersect(vm.health.permissions).size} data permissions granted")
+        Text(if (healthSync.isBlank()) "Connected with no data yet" else "Last refreshed ${localDateTime(healthSync)}")
+        Text(if (healthSources.isBlank()) "No workout apps have shared data yet" else "Workout apps: $healthSources")
+      }
+      if (healthError.isNotBlank()) Text("Last refresh failed. Your existing activity is unchanged.", color = MaterialTheme.colorScheme.error)
+    }
     Button(
       onClick = {
         if (vm.health.available()) permissions.launch(vm.health.permissions)
@@ -144,8 +182,15 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     OutlinedButton(
       onClick = {
         vm.run {
-          vm.health.sync()
-          status = "Activity refreshed."
+          try {
+            vm.health.sync()
+            status = "Activity refreshed."
+          } finally {
+            healthGranted = vm.health.granted()
+            healthSync = vm.prefs.get("healthSync")
+            healthSources = vm.prefs.get("healthSources")
+            healthError = vm.prefs.get("healthError")
+          }
         }
       }
     ) {
@@ -158,7 +203,7 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
           vm.store.update {
             it.copy(
               health = emptyList(),
-              measurements = it.measurements.filter { m -> m.source == "Manual" },
+              measurements = it.measurements.filter { m -> m.sourceId == null },
             )
           }
           status =
@@ -167,6 +212,13 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       }
     ) {
       Text("Disconnect & remove imports")
+    }
+    TextButton(onClick = { healthDiagnostics = !healthDiagnostics }) { Text(if (healthDiagnostics) "Hide technical details" else "Technical details") }
+    if (healthDiagnostics) {
+      val state by vm.state.collectAsStateWithLifecycle()
+      Text("Readable window: ${if ("android.permission.health.READ_HEALTH_DATA_HISTORY" in healthGranted) "up to 90 days" else "30 days"}", style = MaterialTheme.typography.bodySmall)
+      Text("Record origins: ${state.health.flatMap { it.origins }.distinct().joinToString().ifBlank { "none" }}", style = MaterialTheme.typography.bodySmall)
+      if (healthError.isNotBlank()) Text("Last error: $healthError", style = MaterialTheme.typography.bodySmall)
     }
     Section("Make it yours")
     Choice(
@@ -391,3 +443,10 @@ fun UpdateDialog(vm: TrackerViewModel, release: Release, onDismiss: () -> Unit) 
     }
   }
 }
+
+private fun localDateTime(value: String): String =
+  runCatching {
+      DateTimeFormatter.ofPattern("d MMM, HH:mm")
+        .format(Instant.parse(value).atZone(ZoneId.systemDefault()))
+    }
+    .getOrDefault("recently")
