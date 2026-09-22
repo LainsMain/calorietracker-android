@@ -121,7 +121,8 @@ class UiInstrumentedTest {
       compose.onAllNodesWithText("YOUR DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
     }
     snapshot("today")
-    compose.onNodeWithText("Morning run").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag("today-list").performScrollToNode(hasText("Morning run"))
+    compose.onNodeWithText("Morning run").assertIsDisplayed()
     compose.onNodeWithText("Google Fit").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Diary").performClick()
     compose.onNodeWithText("Food diary").assertIsDisplayed()
@@ -182,7 +183,7 @@ class UiInstrumentedTest {
       }
     }
     compose.waitUntil(15000) {
-      compose.onAllNodesWithText("YOUR DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithContentDescription("Review plan").fetchSemanticsNodes().isNotEmpty()
     }
     compose.onNodeWithContentDescription("Review plan").performClick()
     compose.onNodeWithText("The facts behind your estimate").assertIsDisplayed()

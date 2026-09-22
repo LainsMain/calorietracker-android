@@ -11,6 +11,7 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.graphics.*
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -203,7 +204,7 @@ fun TodayScreen(
   val date = LocalDate.now()
   val activity = s.health.firstOrNull { it.date == today() }
   LazyColumn(
-    Modifier.fillMaxSize(),
+    Modifier.fillMaxSize().testTag("today-list"),
     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
     verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
