@@ -290,13 +290,26 @@ fun TodayScreen(
           log,
         )
       }
-    else
-      items(s.meals) { meal ->
-        val entries = s.entries.filter { it.date == today() && it.meal == meal }
+    else {
+      val visibleMeals =
+        s.meals +
+          s.entries
+            .filter {
+              it.date == today() && s.meals.none { meal -> meal.equals(it.meal, true) }
+            }
+            .map { it.meal }
+            .distinct()
+      items(visibleMeals) { meal ->
+        val configured = meal in s.meals
+        val entries =
+          s.entries.filter {
+            it.date == today() &&
+              if (configured) it.meal.equals(meal, true) else it.meal == meal
+          }
         if (entries.isNotEmpty())
           Panel {
             Row(Modifier.fillMaxWidth()) {
-              Text(meal, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+              Text(meal.ifBlank { "Other" }, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
               Text(energy(Nutrients.total(entries.map { it.nutrients }).kcal))
             }
             Text(
@@ -306,6 +319,7 @@ fun TodayScreen(
             )
           }
       }
+    }
     item {
       Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
         Icon(Icons.Rounded.AutoAwesome, null)
@@ -372,6 +386,7 @@ fun DiaryScreen(
   var copyMeal by remember { mutableStateOf<String?>(null) }
   var full by remember { mutableStateOf(false) }
   LazyColumn(
+    modifier = Modifier.testTag("diary-list"),
     contentPadding = PaddingValues(20.dp, 0.dp, 20.dp, 100.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
@@ -399,9 +414,19 @@ fun DiaryScreen(
         if (full) NutrientGrid(s.totals(date))
       }
     }
-    s.meals.forEach { meal ->
-      val entries = s.entries.filter { it.date == date && it.meal == meal }
-      item { Section(meal, if (entries.isNotEmpty()) "Copy" else null) { copyMeal = meal } }
+    val visibleMeals =
+      s.meals +
+        s.entries
+          .filter { it.date == date && s.meals.none { meal -> meal.equals(it.meal, true) } }
+          .map { it.meal }
+          .distinct()
+    visibleMeals.forEach { meal ->
+      val configured = meal in s.meals
+      val entries =
+        s.entries.filter {
+          it.date == date && if (configured) it.meal.equals(meal, true) else it.meal == meal
+        }
+      item { Section(meal.ifBlank { "Other" }, if (entries.isNotEmpty()) "Copy" else null) { copyMeal = meal } }
       if (entries.isEmpty())
         item {
           Text(

@@ -73,30 +73,57 @@ constructor(@ApplicationContext private val context: Context, private val store:
     val elapsed = System.currentTimeMillis() - lastSearch
     if (elapsed < 6500) delay(6500 - elapsed)
     lastSearch = System.currentTimeMillis()
+    val lowered = norm(query)
+    val remoteQuery = foodSearchQuery(query)
     val url =
-      "https://world.openfoodfacts.org/cgi/search.pl"
+      "https://search.openfoodfacts.org/search"
         .toHttpUrl()
         .newBuilder()
-        .addQueryParameter("search_terms", query)
-        .addQueryParameter("search_simple", "1")
-        .addQueryParameter("action", "process")
-        .addQueryParameter("json", "1")
-        .addQueryParameter("page_size", "30")
-        .addQueryParameter(
-          "fields",
-          "code,product_name,product_name_en,brands,nutriments,quantity,product_quantity_unit,serving_quantity,nutrition_data_per,nutrition_data_prepared_per,countries_tags",
-        )
+        .addQueryParameter("q", remoteQuery)
+        .addQueryParameter("page_size", "50")
+        .addQueryParameter("langs", "nl,fr,en")
+        .addQueryParameter("boost_phrase", "true")
         .build()
-    val body = request(url.toString())
-    val products = body["products"]?.jsonArray ?: JsonArray(emptyList())
+    val products =
+      try {
+        request(url.toString())["hits"]?.jsonArray ?: JsonArray(emptyList())
+      } catch (e: CancellationException) {
+        throw e
+      } catch (_: Exception) {
+        val fallback =
+          "https://world.openfoodfacts.org/cgi/search.pl"
+            .toHttpUrl()
+            .newBuilder()
+            .addQueryParameter("search_terms", query)
+            .addQueryParameter("search_simple", "1")
+            .addQueryParameter("action", "process")
+            .addQueryParameter("json", "1")
+            .addQueryParameter("page_size", "40")
+            .addQueryParameter(
+              "fields",
+              "code,product_name,product_name_en,product_name_nl,product_name_fr,brands,nutriments,quantity,product_quantity_unit,serving_quantity,nutrition_data_per,nutrition_data_prepared_per,countries_tags,stores",
+            )
+            .build()
+        request(fallback.toString())["products"]?.jsonArray ?: JsonArray(emptyList())
+      }
+    val words = lowered.split(Regex("\\s+")).filter { it.isNotBlank() }
     val ranked =
       products
-        .sortedByDescending {
-          it.jsonObject["countries_tags"]?.jsonArray?.any { v ->
-            v.jsonPrimitive.content == "en:belgium"
-          } == true
+        .mapNotNull { value ->
+          val product = value.jsonObject
+          OpenFoodFactsParser.parse(product)?.let { food -> product to food }
         }
-        .mapNotNull { OpenFoodFactsParser.parse(it.jsonObject) }
+        .sortedByDescending { (product, food) ->
+          val countries = product.stringList("countries_tags")
+          val stores = product.stringList("stores")
+          val searchable = norm("${food.name} ${food.brand} ${stores.joinToString(" ")}")
+          val belgian = countries.any { "belg" in norm(it) } || food.barcode?.startsWith("54") == true
+          (if (belgian) 100 else 0) +
+            (if (words.all { it in searchable }) 30 else 0) +
+            (if (words.any { it == norm(food.brand) }) 15 else 0) +
+            (if (stores.any { "colruyt" in norm(it) }) 10 else 0)
+        }
+        .map { it.second }
     store.cache(ranked)
     ranked
   }
@@ -123,7 +150,7 @@ constructor(@ApplicationContext private val context: Context, private val store:
             .url(url)
             .header(
               "User-Agent",
-              "CalorieTracker/1.0 (https://github.com/LainsMain/calorietracker-android)",
+              "CalorieTracker/1.1 (https://github.com/LainsMain/calorietracker-android)",
             )
             .build()
         )
@@ -139,8 +166,12 @@ constructor(@ApplicationContext private val context: Context, private val store:
 
 object OpenFoodFactsParser {
   fun parse(p: JsonObject, barcode: String? = null): Food? {
-    fun text(k: String) = p[k]?.jsonPrimitive?.contentOrNull.orEmpty()
-    val name = text("product_name").ifBlank { text("product_name_en") }
+    fun text(k: String) = p.stringList(k).firstOrNull().orEmpty()
+    val name =
+      text("product_name")
+        .ifBlank { text("product_name_nl") }
+        .ifBlank { text("product_name_fr") }
+        .ifBlank { text("product_name_en") }
     if (name.isBlank()) return null
     val n = p["nutriments"]?.jsonObject ?: JsonObject(emptyMap())
     val prepared =
@@ -178,6 +209,30 @@ object OpenFoodFactsParser {
       serving = p["serving_quantity"]?.jsonPrimitive?.doubleOrNull?.takeIf { it > 0 },
       source = "Open Food Facts · ODbL",
       sourceUrl = "https://world.openfoodfacts.org/product/$code",
+      aliases = p.stringList("stores").joinToString(" "),
     )
   }
+}
+
+private fun JsonObject.stringList(key: String): List<String> =
+  when (val value = this[key]) {
+    is JsonArray -> value.mapNotNull { it.jsonPrimitive.contentOrNull }
+    is JsonPrimitive -> value.contentOrNull?.let(::listOf).orEmpty()
+    else -> emptyList()
+  }
+
+internal fun foodSearchQuery(query: String): String {
+  val lowered = query.lowercase()
+  return when {
+    "colruyt" in lowered ->
+      "(brands:\"colruyt\" OR stores:\"colruyt\" OR brands:\"boni\" OR brands:\"everyday\") " +
+        query.replace(Regex("(?i)\\bcolruyt\\b"), "").trim()
+    "everyday" in lowered ->
+      "(brands:\"everyday\" OR stores:\"colruyt\") " +
+        query.replace(Regex("(?i)\\beveryday\\b"), "").trim()
+    "boni" in lowered ->
+      "(brands:\"boni\" OR stores:\"colruyt\") " +
+        query.replace(Regex("(?i)\\bboni(?: selection)?\\b"), "").trim()
+    else -> query
+  }.trim()
 }

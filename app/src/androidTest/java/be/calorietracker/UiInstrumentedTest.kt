@@ -53,7 +53,7 @@ class UiInstrumentedTest {
           foods = listOf(oats.copy(lastUsed = now()), lunch),
           entries =
             listOf(
-              Entry(food = oats, amount = 250.0),
+              Entry(food = oats, amount = 250.0, meal = "breakfast"),
               Entry(food = lunch, amount = 350.0, meal = "Lunch"),
             ),
           measurements =
@@ -89,11 +89,13 @@ class UiInstrumentedTest {
             ),
           messages =
             listOf(
-              Message(role = "user", text = "How is my week looking?"),
+              Message(role = "user", text = "How is my week looking?", requestId = "coach-request"),
               Message(
                 role = "assistant",
                 text = "## Weekly focus\n- Keep logging complete days\n- Your **morning run** adds useful context.",
+                requestId = "coach-request",
               ),
+              Message(role = "assistant", text = "I prepared one reviewed change.", requestId = "coach-request"),
             ),
           proposals =
             listOf(
@@ -111,6 +113,7 @@ class UiInstrumentedTest {
                     )
                   ),
                 explanation = "A reviewed UI test change",
+                requestId = "coach-request",
               )
             ),
           water = listOf(Water(ml = 1250)),
@@ -126,6 +129,8 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Google Fit").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Diary").performClick()
     compose.onNodeWithText("Food diary").assertIsDisplayed()
+    compose.onNodeWithTag("diary-list").performScrollToNode(hasText("Overnight oats with berries"))
+    compose.onNodeWithText("Overnight oats with berries").assertIsDisplayed()
     snapshot("diary")
     compose.onNodeWithText("Recipes").performClick()
     compose.onNodeWithText("Made by you").assertIsDisplayed()
@@ -137,7 +142,7 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Weekly focus").assertIsDisplayed()
     compose.onNodeWithText("Keep logging complete days").assertIsDisplayed()
     compose.onNodeWithTag("coach-list").performScrollToNode(hasText("Ready for your review"))
-    compose.onNodeWithText("Ready for your review").assertIsDisplayed()
+    compose.onAllNodesWithText("Ready for your review").assertCountEquals(1)
     compose.onNodeWithText("Apply").performScrollTo().performClick()
     compose.waitUntil(5000) {
       store.state.value.proposals.single { it.id == "ui-plan-proposal" }.status == "applied"
@@ -146,6 +151,12 @@ class UiInstrumentedTest {
     compose.waitUntil(5000) {
       store.state.value.proposals.single { it.id == "ui-plan-proposal" }.status == "undone"
     }
+    compose.onNodeWithContentDescription("Take photo").assertExists()
+    compose.onNodeWithContentDescription("New chat").performClick()
+    compose.onNodeWithText("Let's find what works for you").assertIsDisplayed()
+    compose.onNodeWithContentDescription("Chat history").performClick()
+    compose.onNodeWithText("How is my week looking?").performClick()
+    compose.onNodeWithText("Weekly focus").assertIsDisplayed()
     snapshot("coach")
     compose.onNodeWithText("Today").performClick()
     compose.waitUntil(5000) {

@@ -176,6 +176,23 @@ constructor(@ApplicationContext private val context: Context, private val crypto
     )
   }
 
+  suspend fun newConversation() = update { state ->
+    val conversation = Conversation()
+    state.copy(
+      conversations = state.conversations + conversation,
+      activeConversationId = conversation.id,
+    )
+  }
+
+  suspend fun selectConversation(id: String) = update { state ->
+    require(
+      id == "default" ||
+        state.conversations.any { it.id == id } ||
+        state.messages.any { it.conversationId == id }
+    )
+    state.copy(activeConversationId = id)
+  }
+
   suspend fun deleteMessage(id: String) {
     val deleted = mutableListOf<String>()
     update { s ->
@@ -291,7 +308,13 @@ constructor(@ApplicationContext private val context: Context, private val crypto
         "entry" -> {
           val v = codec.decodeFromString<Entry>(p.payload)
           require(v.nutrients == v.food.portion(v.amount, v.unit))
-          next = s.copy(entries = s.entries + v)
+          next =
+            s.copy(
+              entries = s.entries + v,
+              foods =
+                s.foods.filterNot { food -> food.id == v.food.id } +
+                  v.food.copy(lastUsed = now()),
+            )
           listOf(v.id)
         }
         "recipe" -> {
@@ -314,7 +337,12 @@ constructor(@ApplicationContext private val context: Context, private val crypto
         },
       messages =
         next.messages +
-          Message(role = "system", text = "User approved ${p.type} proposal $id", kind = "audit"),
+          Message(
+            role = "system",
+            text = "User approved ${p.type} proposal $id",
+            kind = "audit",
+            conversationId = p.conversationId,
+          ),
     )
   }
 
@@ -332,7 +360,13 @@ constructor(@ApplicationContext private val context: Context, private val crypto
             if (it.id == id) it.copy(status = "pending", appliedPlanId = null) else it
           },
         messages =
-          s.messages + Message(role = "system", text = "User undid proposal $id", kind = "audit"),
+          s.messages +
+            Message(
+              role = "system",
+              text = "User undid proposal $id",
+              kind = "audit",
+              conversationId = p.conversationId,
+            ),
       )
   }
 

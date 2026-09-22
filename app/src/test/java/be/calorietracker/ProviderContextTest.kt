@@ -4,6 +4,8 @@ import be.calorietracker.data.codec
 import be.calorietracker.domain.*
 import be.calorietracker.services.OpenFoodFactsParser
 import be.calorietracker.services.DeepSeekStreamAccumulator
+import be.calorietracker.services.normalizedMeal
+import be.calorietracker.services.foodSearchQuery
 import be.calorietracker.ui.markdownBlocks
 import be.calorietracker.ui.safeMarkdown
 import kotlinx.serialization.decodeFromString
@@ -49,6 +51,39 @@ class ProviderContextTest {
   }
 
   @Test
+  fun searchResultArraysPreserveBelgianBrandAndStore() {
+    val p =
+      codec
+        .parseToJsonElement(
+          """{"code":"5400141167825","product_name":"Magere yoghurt","brands":["Everyday"],"stores":["Colruyt"],"countries_tags":["en:belgium"],"nutriments":{"energy-kcal_100g":45}}"""
+        )
+        .jsonObject
+    val food = OpenFoodFactsParser.parse(p)!!
+    assertEquals("Everyday", food.brand)
+    assertTrue(food.aliases.contains("Colruyt"))
+    assertEquals(45.0, food.nutrients.kcal!!, 0.0)
+  }
+
+  @Test
+  fun coachMealNamesMatchConfiguredDiaryGroups() {
+    val meals = listOf("Breakfast", "Lunch", "Dinner", "Snacks")
+    assertEquals("Breakfast", normalizedMeal("breakfast", meals))
+    assertEquals("Lunch", normalizedMeal("middageten", meals))
+    assertEquals("Snacks", normalizedMeal("something unusual", meals))
+  }
+
+  @Test
+  fun belgianRetailSearchIncludesHouseBrandsAndStore() {
+    val colruyt = foodSearchQuery("Colruyt yoghurt")
+    assertTrue(colruyt.contains("stores:\"colruyt\""))
+    assertTrue(colruyt.contains("brands:\"boni\""))
+    assertTrue(colruyt.endsWith("yoghurt"))
+    val everyday = foodSearchQuery("Everyday milk")
+    assertTrue(everyday.contains("brands:\"everyday\""))
+    assertTrue(everyday.endsWith("milk"))
+  }
+
+  @Test
   fun contextIsBoundedAndChronological() {
     val messages =
       (0..99).map { Message(id = it.toString(), role = "user", text = "x".repeat(5000)) }
@@ -85,6 +120,8 @@ class ProviderContextTest {
     assertNull(state.plans.single().intent)
     assertTrue(state.weeklyCheckIns.isEmpty())
     assertTrue(state.weeklyRecommendations.isEmpty())
+    assertEquals("default", state.activeConversationId)
+    assertTrue(state.conversations.isEmpty())
   }
 
   @Test
