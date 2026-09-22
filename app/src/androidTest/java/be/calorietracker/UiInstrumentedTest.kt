@@ -139,8 +139,10 @@ class UiInstrumentedTest {
     snapshot("progress")
     compose.onNodeWithText("Coach").performClick()
     compose.onNodeWithText("Your coach").assertIsDisplayed()
-    compose.onNodeWithText("Weekly focus").assertIsDisplayed()
-    compose.onNodeWithText("Keep logging complete days").assertIsDisplayed()
+    compose.waitUntil(5000) {
+      compose.onAllNodesWithText("I prepared one reviewed change.").fetchSemanticsNodes().isNotEmpty()
+    }
+    compose.onNodeWithText("I prepared one reviewed change.").assertIsDisplayed()
     compose.onNodeWithTag("coach-list").performScrollToNode(hasText("Ready for your review"))
     compose.onAllNodesWithText("Ready for your review").assertCountEquals(1)
     compose.onNodeWithText("Apply").performScrollTo().performClick()
@@ -156,7 +158,7 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Let's find what works for you").assertIsDisplayed()
     compose.onNodeWithContentDescription("Chat history").performClick()
     compose.onNodeWithText("How is my week looking?").performClick()
-    compose.onNodeWithText("Weekly focus").assertIsDisplayed()
+    compose.onNodeWithText("I prepared one reviewed change.").assertIsDisplayed()
     snapshot("coach")
     compose.onNodeWithText("Today").performClick()
     compose.waitUntil(5000) {
