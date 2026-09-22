@@ -136,7 +136,8 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Your coach").assertIsDisplayed()
     compose.onNodeWithText("Weekly focus").assertIsDisplayed()
     compose.onNodeWithText("Keep logging complete days").assertIsDisplayed()
-    compose.onNodeWithText("Ready for your review").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithTag("coach-list").performScrollToNode(hasText("Ready for your review"))
+    compose.onNodeWithText("Ready for your review").assertIsDisplayed()
     compose.onNodeWithText("Apply").performScrollTo().performClick()
     compose.waitUntil(5000) {
       store.state.value.proposals.single { it.id == "ui-plan-proposal" }.status == "applied"
