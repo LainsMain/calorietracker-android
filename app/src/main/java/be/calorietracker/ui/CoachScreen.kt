@@ -1,5 +1,8 @@
 package be.calorietracker.ui
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.*
@@ -12,10 +15,13 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.core.content.ContextCompat
+import androidx.core.content.FileProvider
 import be.calorietracker.data.*
 import be.calorietracker.domain.*
 import java.time.Instant
@@ -36,29 +42,90 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
   var query by remember { mutableStateOf("") }
   var showSearch by remember { mutableStateOf(false) }
   var showInfo by remember { mutableStateOf(false) }
+  var showChats by remember { mutableStateOf(false) }
   val clipboard = LocalClipboardManager.current
+  val context = LocalContext.current
+  val conversationId = s.activeConversationId
   val visibleMessages =
-    s.messages.filter { it.kind == "message" && (query.isBlank() || it.text.contains(query, true)) }
+    s.messages.filter {
+      it.conversationId == conversationId &&
+        it.kind == "message" &&
+        (query.isBlank() || it.text.contains(query, true))
+    }
+  val visibleProposals =
+    s.proposals
+      .filter {
+        it.conversationId == conversationId && it.status in listOf("pending", "applied")
+      }
+      .distinctBy { it.id }
+  val lastAssistantIndexByRequest =
+    visibleMessages
+      .mapIndexedNotNull { index, message ->
+        message.requestId?.takeIf { message.role == "assistant" }?.let { it to index }
+      }
+      .toMap()
+  val listState = rememberLazyListState()
+  var cameraFile by remember { mutableStateOf<java.io.File?>(null) }
+  var cameraUri by remember { mutableStateOf<Uri?>(null) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
       if (uri != null) vm.run { attachments += vm.store.importPhoto(uri, "chat").id }
     }
+  val camera =
+    rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
+      val uri = cameraUri
+      val file = cameraFile
+      if (saved && uri != null)
+        vm.run {
+          try {
+            attachments += vm.store.importPhoto(uri, "chat").id
+          } finally {
+            file?.delete()
+          }
+        }
+      else file?.delete()
+      cameraFile = null
+      cameraUri = null
+    }
+  fun openCamera() {
+    val file = java.io.File.createTempFile("coach-photo-", ".jpg", context.cacheDir)
+    val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+    cameraFile = file
+    cameraUri = uri
+    camera.launch(uri)
+  }
+  val cameraPermission =
+    rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+      if (granted) openCamera()
+    }
+  LaunchedEffect(conversationId, visibleMessages.size, visibleProposals.size, busy, streaming.length) {
+    if (query.isBlank()) {
+      withFrameNanos { }
+      val last = listState.layoutInfo.totalItemsCount - 1
+      if (last >= 0) listState.scrollToItem(last)
+    }
+  }
   Column(Modifier.fillMaxSize()) {
+    Box(Modifier.padding(horizontal = 20.dp)) {
+      PageTitle("A fresh chat whenever you want", "Your coach") {
+        IconButton(onClick = { showChats = true }) { Icon(Icons.Rounded.History, "Chat history") }
+        IconButton(onClick = { vm.run { vm.store.newConversation() } }, enabled = !busy) {
+          Icon(Icons.Rounded.AddComment, "New chat")
+        }
+        IconButton(onClick = { showInfo = true }) { Icon(Icons.Rounded.Info, "Conversation information") }
+        IconButton(onClick = { showSearch = !showSearch }) {
+          Icon(Icons.Rounded.Search, "Search conversation")
+        }
+      }
+    }
     LazyColumn(
       Modifier.weight(1f).testTag("coach-list"),
+      state = listState,
       contentPadding = PaddingValues(20.dp),
       verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-      item {
-        PageTitle("One conversation, your whole journey", "Your coach") {
-          IconButton(onClick = { showInfo = true }) { Icon(Icons.Rounded.Info, "Conversation information") }
-          IconButton(onClick = { showSearch = !showSearch }) {
-            Icon(Icons.Rounded.Search, "Search conversation")
-          }
-        }
-      }
       if (showSearch) item { Field("Search saved messages", query, { query = it }) }
-      if (s.messages.none { it.kind == "message" })
+      if (visibleMessages.isEmpty() && query.isBlank())
         item {
           EmptyState(
             "Let's find what works for you",
@@ -109,15 +176,20 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
               Text("This explanation uses the saved weekly calculation. Any target change still needs your approval on Today.")
             }
           }
-          if (m.requestId != null)
-            s.proposals
-              .filter {
-                it.requestId == m.requestId && it.status in listOf("pending", "applied")
-              }
-              .forEach { p -> ProposalCard(vm, p) { selected = p } }
+          if (
+            m.requestId != null &&
+              lastAssistantIndexByRequest[m.requestId] == index
+          ) {
+            val linked = visibleProposals.filter { it.requestId == m.requestId }
+            if (linked.size > 1 && linked.all { it.type == "entry" })
+              EntryProposalBatchCard(vm, linked) { selected = it }
+            else linked.forEach { p -> ProposalCard(vm, p) { selected = p } }
+          }
         }
       }
-      items(s.proposals.filter { it.requestId == null && it.status in listOf("pending", "applied") }) { p -> ProposalCard(vm, p) { selected = p } }
+      items(visibleProposals.filter { it.requestId == null }, key = { it.id }) { p ->
+        ProposalCard(vm, p) { selected = p }
+      }
       if (busy)
         item {
           Panel {
@@ -129,19 +201,29 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
             }
           }
         }
-      val lastUser = s.messages.lastOrNull { it.role == "user" && it.kind == "message" }
+      val lastUser =
+        s.messages.lastOrNull {
+          it.conversationId == conversationId && it.role == "user" && it.kind == "message"
+        }
       if (
         !busy &&
           lastUser != null &&
           s.messages.none {
-            it.role == "assistant" && it.kind == "message" && it.requestId == lastUser.requestId
+            it.conversationId == conversationId &&
+              it.role == "assistant" &&
+              it.kind == "message" &&
+              it.requestId == lastUser.requestId
           }
       )
         item {
           Panel {
             Text(
               s.messages
-                .lastOrNull { it.kind == "error" && it.requestId == lastUser.requestId }
+                .lastOrNull {
+                  it.conversationId == conversationId &&
+                    it.kind == "error" &&
+                    it.requestId == lastUser.requestId
+                }
                 ?.text ?: "This request has no completed response."
             )
             Button(onClick = { vm.retryCoach() }) { Text("Retry response") }
@@ -159,7 +241,20 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       IconButton(onClick = { picker.launch("image/*") }, enabled = !busy) {
-        Icon(Icons.Rounded.AddPhotoAlternate, "Attach photo")
+        Icon(Icons.Rounded.AddPhotoAlternate, "Choose photo")
+      }
+      IconButton(
+        onClick = {
+          if (
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) ==
+              PackageManager.PERMISSION_GRANTED
+          )
+            openCamera()
+          else cameraPermission.launch(Manifest.permission.CAMERA)
+        },
+        enabled = !busy,
+      ) {
+        Icon(Icons.Rounded.PhotoCamera, "Take photo")
       }
       OutlinedTextField(
         text,
@@ -184,14 +279,64 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
         }
     }
   }
+  if (showChats) {
+    val chats =
+      buildList {
+        if (s.activeConversationId == "default" || s.messages.any { it.conversationId == "default" })
+          add(Conversation(id = "default", title = "First chat", created = s.messages.firstOrNull { it.conversationId == "default" }?.timestamp ?: now()))
+        addAll(s.conversations)
+      }.distinctBy { it.id }.sortedByDescending { it.created }
+    AlertDialog(
+      onDismissRequest = { showChats = false },
+      title = { Text("Your chats") },
+      text = {
+        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          items(chats, key = { it.id }) { chat ->
+            val first =
+              s.messages.firstOrNull {
+                it.conversationId == chat.id && it.role == "user" && it.kind == "message"
+              }
+            val title = first?.text?.trim()?.take(48)?.ifBlank { null } ?: chat.title
+            Surface(
+              onClick = {
+                vm.run { vm.store.selectConversation(chat.id) }
+                showChats = false
+              },
+              color =
+                if (chat.id == conversationId) MaterialTheme.colorScheme.primaryContainer
+                else MaterialTheme.colorScheme.surfaceContainer,
+              shape = MaterialTheme.shapes.large,
+            ) {
+              Column(Modifier.fillMaxWidth().padding(14.dp)) {
+                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+                Text(
+                  "${s.messages.count { it.conversationId == chat.id && it.kind == "message" }} messages",
+                  style = MaterialTheme.typography.bodySmall,
+                )
+              }
+            }
+          }
+        }
+      },
+      confirmButton = {
+        TextButton(
+          onClick = {
+            vm.run { vm.store.newConversation() }
+            showChats = false
+          }
+        ) { Text("New chat") }
+      },
+      dismissButton = { TextButton(onClick = { showChats = false }) { Text("Close") } },
+    )
+  }
   if (showInfo)
     AlertDialog(
       onDismissRequest = { showInfo = false },
       title = { Text("Conversation information") },
       text = {
         Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("${s.messages.count { it.kind == "message" }} saved messages")
-          Text("${s.summaries.size} encrypted context summaries; original messages remain searchable.")
+          Text("${visibleMessages.size} saved messages in this chat")
+          Text("${s.summaries.count { it.conversationId == conversationId }} encrypted context summaries; original messages remain searchable.")
           Text(if (usage.isBlank()) "No token usage available for this session." else "Last request usage: $usage")
           Text("DeepSeek Flash uses high-effort thinking. Private reasoning is never shown in the transcript.")
         }
@@ -278,6 +423,68 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
           }
           selected = null
         }
+    }
+  }
+}
+
+@Composable
+private fun EntryProposalBatchCard(
+  vm: TrackerViewModel,
+  proposals: List<Proposal>,
+  onEdit: (Proposal) -> Unit,
+) {
+  val pending = proposals.filter { it.status == "pending" }
+  Panel(
+    tint =
+      if (pending.isEmpty()) MaterialTheme.colorScheme.secondaryContainer
+      else MaterialTheme.colorScheme.primaryContainer
+  ) {
+    Text(
+      if (pending.isEmpty()) "Meal added" else "Meal ready for your review",
+      style = MaterialTheme.typography.titleMedium,
+    )
+    proposals.forEach { proposal ->
+      val entry = runCatching { codec.decodeFromString<Entry>(proposal.payload) }.getOrNull()
+      if (entry != null) {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Column(Modifier.weight(1f)) {
+            Text(entry.food.name, style = MaterialTheme.typography.titleSmall)
+            Text(
+              "${entry.amount.fmt(1)} ${entry.unit} · ${entry.nutrients.kcal.fmt()} kcal",
+              style = MaterialTheme.typography.bodySmall,
+            )
+          }
+          if (proposal.status == "pending")
+            TextButton(onClick = { onEdit(proposal) }) { Text("Edit") }
+        }
+      }
+    }
+    if (pending.isNotEmpty()) {
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(onClick = { vm.run { pending.forEach { vm.store.applyProposal(it.id) } } }) {
+          Text("Add ${pending.size} items")
+        }
+        TextButton(
+          onClick = {
+            vm.run {
+              vm.store.update { state ->
+                state.copy(
+                  proposals =
+                    state.proposals.map {
+                      if (it.id in pending.map { proposal -> proposal.id })
+                        it.copy(status = "dismissed")
+                      else it
+                    }
+                )
+              }
+            }
+          }
+        ) { Text("Dismiss") }
+      }
+    } else {
+      TextButton(onClick = { vm.run { proposals.forEach { vm.store.undoProposal(it.id) } } }) {
+        Text("Undo all")
+      }
     }
   }
 }

@@ -1,11 +1,11 @@
-CalorieTracker 1.1 makes planning and weekly adjustment clearer while keeping every change under your control.
+CalorieTracker 1.1.1 fixes coach food logging and makes chat and Belgian food search much easier to use.
 
-- Replaces the raw target form with a guided estimate, pace, calorie fine-tuning, macro and preview flow.
-- Adds a Monday weekly check-in based on confirmed complete diary days, weight trend and activity context.
-- Uses deterministic three-week evidence rules, a 75 kcal deadband and a 150 kcal adjustment cap.
-- Shows runs and workouts with readable names, local times, distance, energy and friendly source apps.
-- Redesigns the persistent coach with safe Markdown, day separators, attachment/message actions and contextual cards.
-- Uses DeepSeek Flash high-effort thinking while keeping provider reasoning out of the visible transcript.
-- Preserves v1.0 plans, diary entries, recipes, photos, chat and encrypted backups.
+- Shows every coach-logged food item in Today and Diary even when a provider used different meal-name casing.
+- Saves applied coach foods in recent foods alongside their immutable diary snapshots.
+- Groups multi-item meal confirmation into one review card and prevents a request's card from appearing twice.
+- Opens chats at the latest message and adds separate new chats with a local chat-history picker.
+- Adds direct camera capture beside the existing photo picker in the coach composer.
+- Improves Everyday, Boni and Colruyt searches with Dutch, French and English full-text results, Belgian ranking, and retailer/house-brand matching.
+- Keeps existing v1.1 data and its original chat as the first chat after updating.
 
-Android 10 or newer. Weekly calculations work offline; an explicit “Explain with my coach” tap uses your own DeepSeek API key. Updates still require Android's installation confirmation.
+Android 10 or newer. Food search and coach replies require connectivity. Updates still require Android's installation confirmation.

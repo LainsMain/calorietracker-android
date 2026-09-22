@@ -42,10 +42,28 @@ class StorageInstrumentedTest {
     assertTrue(store.state.value.entries.isEmpty())
     coroutineScope { repeat(10) { launch { store.applyProposal(proposal.id) } } }
     assertEquals(1, store.state.value.entries.size)
+    assertEquals("Test food", store.state.value.foods.single().name)
+    assertNotNull(store.state.value.foods.single().lastUsed)
     store.undoProposal(proposal.id)
     assertTrue(store.state.value.entries.isEmpty())
     store.applyProposal(proposal.id)
     assertTrue(store.state.value.entries.isEmpty())
+  }
+
+  @Test
+  fun chatsAreSeparatedAndSelectable() = runBlocking {
+    val original = Message(role = "user", text = "Original chat")
+    store.update { it.copy(messages = listOf(original)) }
+    store.newConversation()
+    val newId = store.state.value.activeConversationId
+    assertNotEquals("default", newId)
+    store.update {
+      it.copy(messages = it.messages + Message(role = "user", text = "Fresh chat", conversationId = newId))
+    }
+    assertEquals(1, store.state.value.messages.count { it.conversationId == newId })
+    store.selectConversation("default")
+    assertEquals("default", store.state.value.activeConversationId)
+    assertEquals(1, store.state.value.messages.count { it.conversationId == "default" })
   }
 
   @Test

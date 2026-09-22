@@ -347,6 +347,14 @@ data class Message(
   val providerReasoning: String? = null,
   val contextKind: String? = null,
   val contextId: String? = null,
+  val conversationId: String = "default",
+)
+
+@Serializable
+data class Conversation(
+  val id: String = newId(),
+  val title: String = "New chat",
+  val created: String = now(),
 )
 
 @Serializable
@@ -357,6 +365,7 @@ data class Summary(
   val from: String,
   val to: String,
   val created: String = now(),
+  val conversationId: String = "default",
 )
 
 @Serializable
@@ -369,6 +378,7 @@ data class Proposal(
   val created: String = now(),
   val appliedIds: List<String> = emptyList(),
   val requestId: String? = null,
+  val conversationId: String = "default",
 )
 
 @Serializable
@@ -388,6 +398,8 @@ data class AppState(
   val photos: List<Photo> = emptyList(),
   val health: List<HealthDay> = emptyList(),
   val messages: List<Message> = emptyList(),
+  val conversations: List<Conversation> = emptyList(),
+  val activeConversationId: String = "default",
   val summaries: List<Summary> = emptyList(),
   val proposals: List<Proposal> = emptyList(),
   val weeklyCheckIns: List<WeeklyCheckIn> = emptyList(),
