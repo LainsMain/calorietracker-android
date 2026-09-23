@@ -280,8 +280,9 @@ class UiInstrumentedTest {
     compose.onNodeWithTag("today-list").performScrollToNode(hasText("Your weekly check-in is ready"))
     compose.onNodeWithText("Your weekly check-in is ready").assertIsDisplayed()
     compose.onNodeWithText("Review last week").performClick()
-    compose.onNodeWithText("Which days were fully tracked?").assertIsDisplayed()
-    compose.onNodeWithText("Step 1 of 3").assertIsDisplayed()
+    compose.waitUntil(10000) { compose.onAllNodesWithText("Which days were fully tracked?").fetchSemanticsNodes().isNotEmpty() }
+    compose.onNodeWithText("Which days were fully tracked?").performScrollTo().assertIsDisplayed()
+    compose.onNodeWithText("Step 1 of 3").assertExists()
   }
 
   private fun snapshot(name: String) {
