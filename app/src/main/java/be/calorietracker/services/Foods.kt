@@ -101,7 +101,7 @@ constructor(@ApplicationContext private val context: Context, private val store:
             .addQueryParameter("page_size", "40")
             .addQueryParameter(
               "fields",
-              "code,product_name,product_name_en,product_name_nl,product_name_fr,brands,nutriments,quantity,product_quantity_unit,serving_quantity,nutrition_data_per,nutrition_data_prepared_per,countries_tags,stores",
+              "code,product_name,product_name_en,product_name_nl,product_name_fr,brands,nutriments,quantity,product_quantity_unit,serving_quantity,nutrition_data_per,nutrition_data_prepared_per,countries_tags,stores,image_front_small_url,image_front_url,image_url",
             )
             .build()
         request(fallback.toString())["products"]?.jsonArray ?: JsonArray(emptyList())
@@ -150,7 +150,7 @@ constructor(@ApplicationContext private val context: Context, private val store:
             .url(url)
             .header(
               "User-Agent",
-              "CalorieTracker/1.1 (https://github.com/LainsMain/calorietracker-android)",
+              "CalorieTracker/1.2 (https://github.com/LainsMain/calorietracker-android)",
             )
             .build()
         )
@@ -210,6 +210,9 @@ object OpenFoodFactsParser {
       source = "Open Food Facts · ODbL",
       sourceUrl = "https://world.openfoodfacts.org/product/$code",
       aliases = p.stringList("stores").joinToString(" "),
+      imageUrl =
+        listOf("image_front_small_url", "image_front_url", "image_url")
+          .firstNotNullOfOrNull { key -> text(key).takeIf { it.startsWith("https://") } },
     )
   }
 }

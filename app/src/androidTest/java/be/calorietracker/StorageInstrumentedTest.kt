@@ -67,6 +67,23 @@ class StorageInstrumentedTest {
   }
 
   @Test
+  fun mealTemplatePersistsAndLogsFreshSnapshots() = runBlocking {
+    val food = Food(name = "Everyday oats", brand = "Everyday", nutrients = Nutrients(kcal = 120.0))
+    val original = Entry(date = "2026-09-21", meal = "Breakfast", food = food, amount = 200.0)
+    store.log(original)
+    store.saveMealTemplate("Usual breakfast", original.date, original.meal)
+    val template = store.state.value.mealTemplates.single()
+    store.logMealTemplate(template.id, "2026-09-23", "Lunch")
+    val logged = store.state.value.entries.single { it.date == "2026-09-23" }
+    assertNotEquals(original.id, logged.id)
+    assertEquals(240.0, logged.nutrients.kcal!!, 0.0)
+    assertEquals("Lunch", logged.meal)
+    store.load()
+    assertEquals("Usual breakfast", store.state.value.mealTemplates.single().name)
+    assertEquals(2, store.state.value.entries.size)
+  }
+
+  @Test
   fun weeklyRecommendationApplyIsIdempotentAndPreservesOldPlan() = runBlocking {
     val old =
       Plan(

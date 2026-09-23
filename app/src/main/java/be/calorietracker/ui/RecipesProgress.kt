@@ -217,6 +217,16 @@ fun RecipeEditor(
       Text("Use an estimated ingredient weight", Modifier.weight(1f))
     }
     Field("Number of servings (optional)", servings, { servings = it }, true)
+    if (ingredients.isNotEmpty()) {
+      val batch = runCatching { Nutrients.total(ingredients.map { it.food.portion(it.amount, it.unit) }) }.getOrNull()
+      Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
+        Text("Batch nutrition", style = MaterialTheme.typography.titleMedium)
+        Text("${energy(batch?.kcal)} in ${grams.toDoubleOrNull()?.fmt() ?: "—"} g finished weight")
+        val portionKcal = batch?.kcal?.let { kcal -> grams.toDoubleOrNull()?.takeIf { it > 0 }?.let { kcal * 100 / it } }
+        Text("${energy(portionKcal)} per 100 g")
+        servings.toDoubleOrNull()?.takeIf { it > 0 }?.let { count -> Text("${energy(batch?.kcal?.div(count))} per serving") }
+      }
+    }
     OutlinedButton(onClick = { photo.launch("image/*") }) {
       Text(if (photoId == null) "Add recipe photo" else "Replace photo")
     }
@@ -310,6 +320,7 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
   var add by remember { mutableStateOf(false) }
   var compare by remember { mutableStateOf(false) }
   var fullPhoto by remember { mutableStateOf<Photo?>(null) }
+  var weightRange by remember { mutableIntStateOf(30) }
   val picker =
     rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
       if (uri != null) vm.run { vm.store.importPhoto(uri) }
@@ -332,11 +343,27 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
           style = MaterialTheme.typography.displaySmall,
         )
         Text("Target ${s.profile?.targetKg.fmt(1)} kg · daily fluctuations are normal")
-        WeightChart(weights.takeLast(30))
-        Text(
-          "Weekly averages: ${Trends.weeklyWeights(s).joinToString(" → "){it.fmt(1)}} kg",
-          style = MaterialTheme.typography.bodySmall,
-        )
+        Choice("Range", listOf("30 days", "90 days", "All"), when (weightRange) { 30 -> "30 days"; 90 -> "90 days"; else -> "All" }, { weightRange = when (it) { "30 days" -> 30; "90 days" -> 90; else -> Int.MAX_VALUE } })
+        val visibleWeights = weights.filter { weightRange == Int.MAX_VALUE || !LocalDate.parse(it.date).isBefore(LocalDate.now().minusDays(weightRange.toLong())) }
+        if (visibleWeights.size >= 2) {
+          WeightChart(visibleWeights, s.plans.map { it.effective })
+          val changes = s.plans.filter { p -> visibleWeights.any { it.date <= p.effective } && visibleWeights.any { it.date >= p.effective } }
+          if (changes.isNotEmpty()) Text("Plan changed ${changes.joinToString { it.effective }}", style = MaterialTheme.typography.bodySmall)
+          Text("Weekly averages: ${Trends.weeklyWeights(s).joinToString(" → "){it.fmt(1)}} kg", style = MaterialTheme.typography.bodySmall)
+        } else {
+          Text(if (weights.isEmpty()) "Add your first weight to start a private trend." else "Add another weight in this range to see a trend. One reading cannot show direction.", style = MaterialTheme.typography.bodyMedium)
+          TextButton(onClick = { add = true }) { Text("Add weight") }
+        }
+      }
+    }
+    item { Section("Activity from Health Connect") }
+    if (s.health.isEmpty())
+      item { EmptyState("No imported activity yet", "Connect or refresh Health Connect in Settings. Runs and other workouts will appear here.") }
+    items(s.health.sortedByDescending { it.date }.take(7)) { day ->
+      Panel {
+        Text(LocalDate.parse(day.date).format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium)
+        Text("${day.steps ?: 0} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km · ${energy(day.activeKcal)} active")
+        day.workouts.forEach { WorkoutSummary(it) }
       }
     }
     item {
@@ -398,22 +425,6 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
               Icon(Icons.Rounded.DeleteOutline, "Delete measurement")
             }
         }
-      }
-    }
-    item { Section("Activity from Health Connect") }
-    if (s.health.isEmpty())
-      item {
-        EmptyState(
-          "No imported activity yet",
-          "Connect or refresh Health Connect in Settings. Runs, walks, steps, distance, and energy will appear here when a compatible app shares them.",
-        )
-      }
-    items(s.health.sortedByDescending { it.date }.take(14)) { day ->
-      Panel {
-        Text(java.time.LocalDate.parse(day.date).format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium)
-        Text("${day.steps ?: 0} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km · ${energy(day.activeKcal)} active")
-        day.workouts.forEach { WorkoutSummary(it) }
-        if (day.workouts.isEmpty()) Text("No workouts recorded for this day.", style = MaterialTheme.typography.bodySmall)
       }
     }
     item { Section("Plan history") }
@@ -500,15 +511,25 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
 }
 
 @Composable
-fun WeightChart(weights: List<Measurement>) {
+fun WeightChart(weights: List<Measurement>, planDates: List<String> = emptyList()) {
   val color = MaterialTheme.colorScheme.primary
+  val markerColor = MaterialTheme.colorScheme.tertiary
   Canvas(Modifier.fillMaxWidth().height(110.dp)) {
     if (weights.size >= 2) {
       val low = weights.minOf { it.value } - 0.5
       val high = weights.maxOf { it.value } + 0.5
-      val points = weights.mapIndexed { i, w ->
+      val first = LocalDate.parse(weights.first().date).toEpochDay()
+      val span = (LocalDate.parse(weights.last().date).toEpochDay() - first).coerceAtLeast(1)
+      planDates.forEach { date ->
+        val day = runCatching { LocalDate.parse(date).toEpochDay() }.getOrNull()
+        if (day != null && day in first..(first + span)) {
+          val x = ((day - first).toFloat() / span) * size.width
+          drawLine(markerColor, Offset(x, 0f), Offset(x, size.height), 2f, pathEffect = androidx.compose.ui.graphics.PathEffect.dashPathEffect(floatArrayOf(10f, 8f)))
+        }
+      }
+      val points = weights.map { w ->
         Offset(
-          i * size.width / (weights.size - 1),
+          ((LocalDate.parse(w.date).toEpochDay() - first).toFloat() / span) * size.width,
           size.height - ((w.value - low) / (high - low) * size.height).toFloat(),
         )
       }

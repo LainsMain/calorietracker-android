@@ -1,7 +1,7 @@
 # CalorieTracker
 
 A native Android food diary with a calm Material 3 interface, Belgian-friendly food search,
-recipe portions, Health Connect activity and one persistent DeepSeek coach.
+recipe portions, Health Connect activity and persistent DeepSeek chats.
 
 **[Download the latest signed APK](https://github.com/LainsMain/calorietracker-android/releases/latest)** · Android 10+
 
@@ -16,8 +16,9 @@ Online search, AI requests and update downloads use the relevant external provid
 - Search **2,887 bundled CoFID foods offline**, with common Dutch and French search aliases.
 - Log grams, millilitres or defined servings; keep unknown nutrients distinct from zero.
 - Build recipes with a **finished batch weight** and log any gram-based portion.
+- Save a logged meal as a reusable template and review its foods before logging it again.
 - Keep historical food/recipe snapshots and effective-dated plan versions.
-- Track water, weight trends, measurements and encrypted progress photographs.
+- Track water against a configurable goal, weight trends, measurements and encrypted progress photographs.
 - See readable Health Connect runs and workouts with session distance, energy and friendly source names.
 - Chat with DeepSeek Flash in high-effort thinking mode using your own API key. Replies render as
   safe Markdown and actions appear as review cards tied to the relevant message.
@@ -44,7 +45,11 @@ The screenshots below contain **synthetic test data**, not personal records.
 <img src="docs/screenshots/today.png" width="240" alt="Daily energy and macro dashboard">
 <img src="docs/screenshots/diary.png" width="240" alt="Food diary with meals and portions">
 <img src="docs/screenshots/coach.png" width="240" alt="Persistent coach conversation">
+<img src="docs/screenshots/progress.png" width="240" alt="Weight and activity progress">
 </p>
+
+The [dark large-text Today](docs/screenshots/today-dark-large.png) and
+[dark large-text Diary](docs/screenshots/diary-dark-large.png) show the accessibility layout.
 
 ## Build and test
 

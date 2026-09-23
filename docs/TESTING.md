@@ -14,7 +14,9 @@ Markdown, fragmented thinking/tool streams, bounded context, and workout dedupli
 Keystore/Room encryption, idempotent proposal and weekly approval, message deletion/summary
 invalidation, backup replacement and invalid-backup recovery. The Compose journeys visit
 all five destinations, render a Markdown reply and imported run, exercise proposal apply/undo,
-open guided planning and weekly review, capture screenshots, create a custom food, and log it.
+open guided planning and weekly review, capture screenshots, create a custom food, log it,
+and save/reuse a meal template. Large-font dark-mode journeys were also exercised on the
+API 36.1 emulator, including a 320 dp wide layout.
 The Health Connect test seeds test-only steps/weight records, compares aggregation against
 platform source-priority behaviour, repeats sync, then deletes source records and checks
 reconciliation. It runs on API 34+; debug-only write permissions are absent from releases.

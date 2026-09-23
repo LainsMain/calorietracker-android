@@ -129,9 +129,9 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Google Fit").performScrollTo().assertIsDisplayed()
     compose.onNodeWithText("Diary").performClick()
     compose.onNodeWithText("Food diary").assertIsDisplayed()
+    snapshot("diary")
     compose.onNodeWithTag("diary-list").performScrollToNode(hasText("Overnight oats with berries"))
     compose.onNodeWithText("Overnight oats with berries").assertIsDisplayed()
-    snapshot("diary")
     compose.onNodeWithText("Recipes").performClick()
     compose.onNodeWithText("Made by you").assertIsDisplayed()
     compose.onNodeWithText("Progress").performClick()
@@ -172,8 +172,17 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Food name").performTextInput("Test custom food")
     compose.onNodeWithText("Energy (kcal)").performTextInput("120")
     compose.onNodeWithText("Save food").performScrollTo().performClick()
-    compose.onNodeWithText("Log food").performScrollTo().performClick()
+    compose.onNodeWithText("Log food").performClick()
     compose.waitUntil(5000) { store.state.value.entries.any { it.food.name == "Test custom food" } }
+    compose.onNodeWithText("Diary").performClick()
+    compose.onAllNodesWithText("Save meal").onFirst().performClick()
+    compose.onNodeWithText("Template name").performTextClearance()
+    compose.onNodeWithText("Template name").performTextInput("Usual breakfast")
+    compose.onNodeWithText("Save meal template").performClick()
+    compose.waitUntil(5000) { store.state.value.mealTemplates.any { it.name == "Usual breakfast" } }
+    compose.onNodeWithText("Usual breakfast").performClick()
+    compose.onNodeWithText("Log meal").performClick()
+    compose.waitUntil(5000) { store.state.value.entries.count { it.food.name == "Test custom food" } == 2 }
   }
 
   @Test

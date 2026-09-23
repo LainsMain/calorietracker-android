@@ -62,10 +62,8 @@ fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
       .getOrNull()
       ?.let { p -> vm.store.update { it.copy(draft = p, onboardingStep = step) } }
   }
-  Column(
-    modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(24.dp),
-    verticalArrangement = Arrangement.spacedBy(18.dp),
-  ) {
+  Column(modifier.fillMaxSize()) {
+  Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 24.dp), verticalArrangement = Arrangement.spacedBy(18.dp)) {
     Spacer(Modifier.height(20.dp))
     Icon(Icons.Rounded.Spa, null, Modifier.size(48.dp), tint = MaterialTheme.colorScheme.primary)
     PageTitle(
@@ -144,6 +142,8 @@ fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
       }
     }
     ErrorText(error)
+  }
+  Column(Modifier.fillMaxWidth().padding(horizontal = 24.dp, vertical = 12.dp)) {
     Button(
       onClick = {
         try {
@@ -182,6 +182,7 @@ fun Onboarding(vm: TrackerViewModel, s: AppState, modifier: Modifier) {
         Text("Set targets manually instead")
       }
     if (step > 0) TextButton(onClick = { step-- }) { Text("Back") }
+  }
   }
   if (review != null || manual)
     PlanEditor(
@@ -278,7 +279,19 @@ fun PlanEditor(
           intent = guided?.intent,
         ).also { it.validate() }
       }.getOrNull()
-  Modal(if (initial) "Build your starting plan" else "Review your plan", onDismiss) {
+  ActionModal(if (initial) "Build your starting plan" else "Review your plan", onDismiss, action = {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      if (step > 0) OutlinedButton({ step-- }, Modifier.weight(1f)) { Text("Back") }
+      Button(onClick = {
+        if (step < 3) step++
+        else try {
+          val result = requireNotNull(preview) { "Check your target values." }
+          result.validate()
+          onSave(result)
+        } catch (e: Exception) { error = e.message ?: "Check your target values." }
+      }, modifier = Modifier.weight(1f)) { Text(if (step < 3) "Continue" else if (initial) "Start my diary" else "Save plan") }
+    }
+  }, fullScreen = true) {
     Text("Step ${step + 1} of 4", style = MaterialTheme.typography.labelLarge)
     LinearProgressIndicator({ (step + 1) / 4f }, Modifier.fillMaxWidth())
     when (step) {
@@ -347,20 +360,6 @@ fun PlanEditor(
       }
     }
     ErrorText(error)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      if (step > 0) OutlinedButton({ step-- }, Modifier.weight(1f)) { Text("Back") }
-      Button(
-        onClick = {
-          if (step < 3) step++
-          else try {
-            val result = requireNotNull(preview) { "Check your target values." }
-            result.validate()
-            onSave(result)
-          } catch (e: Exception) { error = e.message ?: "Check your target values." }
-        },
-        modifier = Modifier.weight(1f),
-      ) { Text(if (step < 3) "Continue" else if (initial) "Start my diary" else "Save plan") }
-    }
   }
 }
 

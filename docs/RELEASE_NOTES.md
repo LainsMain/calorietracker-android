@@ -1,11 +1,12 @@
-CalorieTracker 1.1.1 fixes coach food logging and makes chat and Belgian food search much easier to use.
+CalorieTracker 1.2.0 refreshes the app with warm porcelain surfaces, petrol-blue actions and a more compact daily view.
 
-- Shows every coach-logged food item in Today and Diary even when a provider used different meal-name casing.
-- Saves applied coach foods in recent foods alongside their immutable diary snapshots.
-- Groups multi-item meal confirmation into one review card and prevents a request's card from appearing twice.
-- Opens chats at the latest message and adds separate new chats with a local chat-history picker.
-- Adds direct camera capture beside the existing photo picker in the coach composer.
-- Improves Everyday, Boni and Colruyt searches with Dutch, French and English full-text results, Belgian ranking, and retailer/house-brand matching.
-- Keeps existing v1.1 data and its original chat as the first chat after updating.
+- Keeps onboarding and guided plan actions visible while you review each step.
+- Adds a date strip, quieter empty meals, food images, and a portion editor with live nutrition and a fixed Log action.
+- Saves logged meals as reusable templates, with a review before logging them again.
+- Adds an editable hydration goal and quick-add amounts.
+- Makes sparse weight history understandable, adds chart ranges, and brings imported workouts forward in Progress.
+- Gives chats clear titles and labeled History/New chat actions, and groups Settings into focused pages.
+- Keeps the weekly check-in compact while preserving approval-based target changes.
+- Preserves existing local records and backup compatibility.
 
-Android 10 or newer. Food search and coach replies require connectivity. Updates still require Android's installation confirmation.
+Android 10 or newer. Online food search and coach replies require connectivity. Android confirms APK installation.

@@ -12,6 +12,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.unit.dp
 import androidx.health.connect.client.PermissionController
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import be.calorietracker.BuildConfig
@@ -24,6 +25,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
   val context = LocalContext.current
+  var page by remember { mutableStateOf("Home") }
   var theme by remember { mutableStateOf("System") }
   var dynamicColour by remember { mutableStateOf(false) }
   var energyUnit by remember { mutableStateOf("kcal") }
@@ -43,6 +45,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
   var delete by remember { mutableStateOf(false) }
   var restoreUri by remember { mutableStateOf<Uri?>(null) }
   var meals by remember { mutableStateOf(vm.state.value.meals.joinToString(", ")) }
+  var waterGoal by remember { mutableStateOf(vm.state.value.waterGoalMl.toString()) }
+  var waterAmounts by remember { mutableStateOf(vm.state.value.waterQuickAmountsMl.joinToString(", ")) }
   LaunchedEffect(Unit) {
     theme = vm.prefs.get("theme", "System")
     dynamicColour = vm.prefs.get("dynamicColour") == "true"
@@ -90,11 +94,31 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
       if (!granted) status = "Notifications are disabled in Android settings."
     }
-  Modal("Settings & privacy", onDismiss) {
+  Modal(if (page == "Home") "Settings" else page, { if (page == "Home") onDismiss() else page = "Home" }) {
+    if (page == "Home") {
     Text("LOCAL BY DESIGN", style = MaterialTheme.typography.labelMedium)
     Text(
       "Your diary, photos and chat are encrypted on this device. There is no account or automatic cloud backup."
     )
+    listOf(
+      "Coach & privacy" to "AI key and private chat",
+      "Health Connect" to "Activity, permissions and sync",
+      "Appearance & tracking" to "Colours, units, meals and water",
+      "Backup & updates" to "Keep your data safe and current",
+      "Sources & licenses" to "Food data, source code and deletion",
+    ).forEach { (title, detail) ->
+      Surface(onClick = { page = title }, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
+        Row(Modifier.fillMaxWidth().padding(18.dp)) {
+          Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium)
+            Text(detail, style = MaterialTheme.typography.bodySmall)
+          }
+          Text("›", style = MaterialTheme.typography.titleLarge)
+        }
+      }
+    }
+    }
+    if (page == "Coach & privacy") {
     Section("DeepSeek coach")
     Text(
       "Using the coach sends your selected messages, relevant health and diary records, and attached images to DeepSeek. API usage is billed to your own key. Local deletion cannot retract previous submissions."
@@ -135,6 +159,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       ) {
         Text("Remove API key")
       }
+    }
+    if (page == "Health Connect") {
     Section("Health & activity")
     Text(
       "Runs, workouts, steps, distance, energy, and weight can be read from Health Connect. Activity helps explain your weekly trend; it never raises today's food budget."
@@ -220,6 +246,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       Text("Record origins: ${state.health.flatMap { it.origins }.distinct().joinToString().ifBlank { "none" }}", style = MaterialTheme.typography.bodySmall)
       if (healthError.isNotBlank()) Text("Last error: $healthError", style = MaterialTheme.typography.bodySmall)
     }
+    }
+    if (page == "Appearance & tracking") {
     Section("Make it yours")
     Choice(
       "Appearance",
@@ -264,6 +292,19 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     ) {
       Text("Save meals")
     }
+    Section("Hydration")
+    Field("Daily water goal (ml)", waterGoal, { waterGoal = it }, true)
+    Field("Quick-add amounts (ml, comma-separated)", waterAmounts, { waterAmounts = it })
+    TextButton(onClick = {
+      val goal = waterGoal.toIntOrNull()
+      val amounts = waterAmounts.split(",").mapNotNull { it.trim().toIntOrNull() }.distinct()
+      if (goal == null || goal !in 250..10000 || amounts.isEmpty() || amounts.any { it !in 25..2000 })
+        status = "Use a 250–10,000 ml goal and quick amounts from 25–2,000 ml."
+      else vm.run {
+        vm.store.update { it.copy(waterGoalMl = goal, waterQuickAmountsMl = amounts) }
+        status = "Water preferences saved."
+      }
+    }) { Text("Save water preferences") }
     Row {
       Text("Gentle tracking reminders", Modifier.weight(1f))
       Switch(
@@ -295,6 +336,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
         },
       )
     }
+    }
+    if (page == "Backup & updates") {
     Section("Encrypted backup")
     Text(
       "Export before changing phones or uninstalling. Restore replaces this device's diary. API keys and imported health records are excluded from restoration."
@@ -335,6 +378,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     ) {
       Text("Check for updates")
     }
+    }
+    if (page == "Sources & licenses") {
     Section("Sources & licences")
     Text(
       "Open Food Facts: ODbL database, attribution and share-alike. CoFID 2021: Crown copyright, Open Government Licence v3.0. Food values can be incomplete or approximate. Trace values remain unknown."
@@ -355,6 +400,8 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     TextButton(onClick = { delete = true }) {
       Text("Delete all local data", color = MaterialTheme.colorScheme.error)
     }
+    }
+    if (status.isNotBlank() && page != "Sources & licenses") Text(status, color = MaterialTheme.colorScheme.primary)
   }
   if (profileEditor) ProfileEditor(vm) { profileEditor = false }
   if (delete)

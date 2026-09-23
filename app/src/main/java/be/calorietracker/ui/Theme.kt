@@ -12,22 +12,54 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.*
 
-val Forest = Color(0xFF244C3C)
-val Lime = Color(0xFFD5E9A4)
+val Ink = Color(0xFF1C292D)
+val Petrol = Color(0xFF245B61)
+val Citrus = Color(0xFFF0C86E)
+val Terracotta = Color(0xFFD97C61)
+val Porcelain = Color(0xFFFAF7F0)
 private val Light =
   lightColorScheme(
-    primary = Forest,
+    primary = Petrol,
     onPrimary = Color.White,
-    primaryContainer = Lime,
-    onPrimaryContainer = Color(0xFF193020),
-    secondary = Color(0xFF676A4A),
-    secondaryContainer = Color(0xFFE8EACD),
-    tertiary = Color(0xFF89614A),
-    tertiaryContainer = Color(0xFFFFDBC6),
-    background = Color(0xFFF8F9F3),
-    surface = Color(0xFFF8F9F3),
-    surfaceContainer = Color(0xFFEEF1E7),
-    surfaceContainerHigh = Color(0xFFE7EBDD),
+    primaryContainer = Color(0xFFD4ECE8),
+    onPrimaryContainer = Ink,
+    secondary = Color(0xFF805A20),
+    secondaryContainer = Color(0xFFFFE8B3),
+    onSecondaryContainer = Ink,
+    tertiary = Color(0xFF8D4434),
+    tertiaryContainer = Color(0xFFF9D9CB),
+    onTertiaryContainer = Ink,
+    background = Porcelain,
+    onBackground = Ink,
+    surface = Porcelain,
+    onSurface = Ink,
+    onSurfaceVariant = Color(0xFF526063),
+    surfaceContainerLow = Color(0xFFFFFCF7),
+    surfaceContainer = Color(0xFFF1EDE5),
+    surfaceContainerHigh = Color(0xFFE9E3D9),
+    outline = Color(0xFF879496),
+  )
+private val Dark =
+  darkColorScheme(
+    primary = Color(0xFF9ED4D3),
+    onPrimary = Color(0xFF12373A),
+    primaryContainer = Color(0xFF1D464B),
+    onPrimaryContainer = Color(0xFFD8F3EF),
+    secondary = Color(0xFFF0C86E),
+    secondaryContainer = Color(0xFF5B421D),
+    onSecondaryContainer = Color(0xFFFFE8B3),
+    tertiary = Color(0xFFF1AD94),
+    tertiaryContainer = Color(0xFF673C31),
+    onTertiaryContainer = Color(0xFFFFE0D5),
+    background = Color(0xFF141E21),
+    onBackground = Color(0xFFF2F1EC),
+    surface = Color(0xFF141E21),
+    onSurface = Color(0xFFF2F1EC),
+    onSurfaceVariant = Color(0xFFBEC8C6),
+    surfaceContainerLow = Color(0xFF1D292C),
+    surfaceContainer = Color(0xFF243337),
+    surfaceContainerHigh = Color(0xFF304347),
+    outline = Color(0xFF95A7A6),
   )
 
 @Composable
@@ -45,7 +77,7 @@ fun TrackerTheme(
   val colours =
     if (dark) {
       if (dynamic && Build.VERSION.SDK_INT >= 31) dynamicDarkColorScheme(LocalContext.current)
-      else darkColorScheme(primary = Lime, primaryContainer = Forest)
+      else Dark
     } else if (dynamic && Build.VERSION.SDK_INT >= 31) dynamicLightColorScheme(LocalContext.current)
     else Light
   MaterialTheme(
@@ -54,22 +86,22 @@ fun TrackerTheme(
       Typography(
         displayLarge =
           androidx.compose.ui.text.TextStyle(
-            fontSize = 64.sp,
-            lineHeight = 68.sp,
+            fontSize = 56.sp,
+            lineHeight = 62.sp,
             fontWeight = FontWeight.Medium,
             letterSpacing = (-3).sp,
           ),
         headlineLarge =
           androidx.compose.ui.text.TextStyle(
-            fontSize = 34.sp,
-            lineHeight = 40.sp,
+            fontSize = 31.sp,
+            lineHeight = 36.sp,
             fontWeight = FontWeight.SemiBold,
             letterSpacing = (-1).sp,
           ),
         titleLarge =
           androidx.compose.ui.text.TextStyle(
-            fontSize = 22.sp,
-            lineHeight = 28.sp,
+            fontSize = 20.sp,
+            lineHeight = 26.sp,
             fontWeight = FontWeight.Medium,
           ),
       ),
