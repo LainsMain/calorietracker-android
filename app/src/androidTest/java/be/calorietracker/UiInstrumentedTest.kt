@@ -277,9 +277,8 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Continue").performClick()
     snapshot("plan-step-4")
     compose.onNodeWithContentDescription("Close").performClick()
-    compose.waitUntil(5000) {
-      compose.onAllNodesWithText("Your weekly check-in is ready").fetchSemanticsNodes().isNotEmpty()
-    }
+    compose.onNodeWithTag("today-list").performScrollToNode(hasText("Your weekly check-in is ready"))
+    compose.onNodeWithText("Your weekly check-in is ready").assertIsDisplayed()
     compose.onNodeWithText("Review last week").performClick()
     compose.onNodeWithText("Which days were fully tracked?").assertIsDisplayed()
     compose.onNodeWithText("Step 1 of 3").assertIsDisplayed()
