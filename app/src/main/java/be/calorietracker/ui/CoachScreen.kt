@@ -294,74 +294,53 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
           add(Conversation(id = "default", title = "First chat", created = s.messages.firstOrNull { it.conversationId == "default" }?.timestamp ?: now()))
         addAll(s.conversations)
       }.distinctBy { it.id }.sortedByDescending { it.created }
-    AlertDialog(
-      onDismissRequest = { showChats = false },
-      title = { Text("Your chats") },
-      text = {
-        LazyColumn(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          items(chats, key = { it.id }) { chat ->
-            val first =
-              s.messages.firstOrNull {
-                it.conversationId == chat.id && it.role == "user" && it.kind == "message"
-              }
-            val title = first?.text?.trim()?.take(48)?.ifBlank { null } ?: chat.title
-            Surface(
-              onClick = {
-                vm.run { vm.store.selectConversation(chat.id) }
-                showChats = false
-              },
-              color =
-                if (chat.id == conversationId) MaterialTheme.colorScheme.primaryContainer
-                else MaterialTheme.colorScheme.surfaceContainer,
-              shape = MaterialTheme.shapes.large,
-            ) {
-              Column(Modifier.fillMaxWidth().padding(14.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
-                Text(
-                  "${s.messages.count { it.conversationId == chat.id && it.kind == "message" }} messages",
-                  style = MaterialTheme.typography.bodySmall,
-                )
-              }
-            }
+    Modal("Your chats", { showChats = false }) {
+      Button(onClick = {
+        vm.run { vm.store.newConversation() }
+        showChats = false
+      }, modifier = Modifier.fillMaxWidth()) { Text("New chat") }
+      chats.forEach { chat ->
+        val first =
+          s.messages.firstOrNull {
+            it.conversationId == chat.id && it.role == "user" && it.kind == "message"
+          }
+        val title = first?.text?.trim()?.take(48)?.ifBlank { null } ?: chat.title
+        Surface(
+          onClick = {
+            vm.run { vm.store.selectConversation(chat.id) }
+            showChats = false
+          },
+          color =
+            if (chat.id == conversationId) MaterialTheme.colorScheme.primaryContainer
+            else MaterialTheme.colorScheme.surfaceContainer,
+          shape = MaterialTheme.shapes.large,
+        ) {
+          Column(Modifier.fillMaxWidth().padding(14.dp)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2)
+            Text(
+              "${s.messages.count { it.conversationId == chat.id && it.kind == "message" }} messages",
+              style = MaterialTheme.typography.bodySmall,
+            )
           }
         }
-      },
-      confirmButton = {
-        TextButton(
-          onClick = {
-            vm.run { vm.store.newConversation() }
-            showChats = false
-          }
-        ) { Text("New chat") }
-      },
-      dismissButton = { TextButton(onClick = { showChats = false }) { Text("Close") } },
-    )
+      }
+    }
   }
   if (showInfo)
-    AlertDialog(
-      onDismissRequest = { showInfo = false },
-      title = { Text("Conversation information") },
-      text = {
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-          Text("${visibleMessages.size} saved messages in this chat")
-          Text("${s.summaries.count { it.conversationId == conversationId }} encrypted context summaries; original messages remain searchable.")
-          Text(if (usage.isBlank()) "No token usage available for this session." else "Last request usage: $usage")
-          Text("DeepSeek Flash uses high-effort thinking. Private reasoning is never shown in the transcript.")
-        }
-      },
-      confirmButton = { TextButton({ showInfo = false }) { Text("Done") } },
-    )
+    Modal("Conversation information", { showInfo = false }) {
+      Text("${visibleMessages.size} saved messages in this chat")
+      Text("${s.summaries.count { it.conversationId == conversationId }} encrypted context summaries; original messages remain searchable.")
+      Text(if (usage.isBlank()) "No token usage available for this session." else "Last request usage: $usage")
+      Text("DeepSeek Flash uses high-effort thinking. Private reasoning is never shown in the transcript.")
+    }
   if (rename)
-    AlertDialog(
-      onDismissRequest = { rename = false },
-      title = { Text("Name this chat") },
-      text = { Field("Chat title", chatTitle, { chatTitle = it }) },
-      confirmButton = { TextButton(onClick = {
+    Modal("Name this chat", { rename = false }) {
+      Field("Chat title", chatTitle, { chatTitle = it })
+      Button(onClick = {
         vm.run { vm.store.renameConversation(conversationId, chatTitle.trim()) }
         rename = false
-      }, enabled = chatTitle.isNotBlank()) { Text("Save") } },
-      dismissButton = { TextButton(onClick = { rename = false }) { Text("Cancel") } },
-    )
+      }, enabled = chatTitle.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save title") }
+    }
   delete?.let { m ->
     AlertDialog(
       onDismissRequest = { delete = null },

@@ -23,9 +23,9 @@ import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 @Composable
-fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
+fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss: () -> Unit) {
   val context = LocalContext.current
-  var page by remember { mutableStateOf("Home") }
+  var page by remember(initialPage) { mutableStateOf(initialPage) }
   var theme by remember { mutableStateOf("System") }
   var dynamicColour by remember { mutableStateOf(false) }
   var energyUnit by remember { mutableStateOf("kcal") }
@@ -47,6 +47,9 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
   var meals by remember { mutableStateOf(vm.state.value.meals.joinToString(", ")) }
   var waterGoal by remember { mutableStateOf(vm.state.value.waterGoalMl.toString()) }
   var waterAmounts by remember { mutableStateOf(vm.state.value.waterQuickAmountsMl.joinToString(", ")) }
+  var fastingEnabled by remember { mutableStateOf(vm.state.value.fasting.enabled) }
+  var fastingStart by remember { mutableStateOf(vm.state.value.fasting.starts) }
+  var fastingEnd by remember { mutableStateOf(vm.state.value.fasting.ends) }
   LaunchedEffect(Unit) {
     theme = vm.prefs.get("theme", "System")
     dynamicColour = vm.prefs.get("dynamicColour") == "true"
@@ -103,7 +106,9 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
     listOf(
       "Coach & privacy" to "AI key and private chat",
       "Health Connect" to "Activity, permissions and sync",
-      "Appearance & tracking" to "Colours, units, meals and water",
+      "Appearance" to "Theme, units and app lock",
+      "Tracking" to "Profile, meals, water and reminders",
+      "Fasting" to "Eating hours and daily status",
       "Backup & updates" to "Keep your data safe and current",
       "Sources & licenses" to "Food data, source code and deletion",
     ).forEach { (title, detail) ->
@@ -117,6 +122,36 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
         }
       }
     }
+    }
+    if (page == "Fasting") {
+      Text("Choose when you usually eat. This is a reminder, not a lock: you can log meals whenever you need to.")
+      Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
+        Text("Show my eating window", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+        Switch(fastingEnabled, { fastingEnabled = it })
+      }
+      Choice("Quick schedules", listOf("12:12", "14:10", "16:8"),
+        when (fastingStart to fastingEnd) {
+          "08:00" to "20:00" -> "12:12"
+          "10:00" to "20:00" -> "14:10"
+          "12:00" to "20:00" -> "16:8"
+          else -> "Custom"
+        },
+        { selected ->
+          fastingStart = when (selected) { "12:12" -> "08:00"; "14:10" -> "10:00"; else -> "12:00" }
+          fastingEnd = "20:00"
+        }
+      )
+      Field("Eating starts (HH:mm)", fastingStart, { fastingStart = it })
+      Field("Eating ends (HH:mm)", fastingEnd, { fastingEnd = it })
+      Text("Times follow your device’s local timezone, including when you travel. Overnight windows are supported.", style = MaterialTheme.typography.bodySmall)
+      Button(onClick = {
+        try {
+          val choice = FastingWindow(fastingEnabled, fastingStart.trim(), fastingEnd.trim())
+          choice.validate()
+          vm.run { vm.store.update { it.copy(fasting = choice) } }
+          status = if (choice.enabled) "Eating window saved." else "Fasting display turned off."
+        } catch (_: Exception) { status = "Enter different valid 24-hour times, such as 12:00 and 20:00." }
+      }, modifier = Modifier.fillMaxWidth()) { Text("Save eating window") }
     }
     if (page == "Coach & privacy") {
     Section("DeepSeek coach")
@@ -247,7 +282,7 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
       if (healthError.isNotBlank()) Text("Last error: $healthError", style = MaterialTheme.typography.bodySmall)
     }
     }
-    if (page == "Appearance & tracking") {
+    if (page == "Appearance") {
     Section("Make it yours")
     Choice(
       "Appearance",
@@ -277,8 +312,29 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
         vm.run { vm.prefs.set("energyUnit", it) }
       },
     )
+    Row {
+      Text("Require device unlock on app launch", Modifier.weight(1f))
+      Switch(
+        biometric,
+        { enabled ->
+          val manager = androidx.biometric.BiometricManager.from(context)
+          if (
+            !enabled ||
+              manager.canAuthenticate(
+                androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
+                  androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
+              ) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
+          ) {
+            biometric = enabled
+            vm.run { vm.prefs.set("biometric", enabled.toString()) }
+          } else status = "Set up a device PIN or biometrics first."
+        },
+      )
+    }
+    }
+    if (page == "Tracking") {
+    Section("Your tracking")
     OutlinedButton(onClick = { profileEditor = true }) { Text("Edit profile & goals") }
-
     Field("Meal names, comma-separated", meals, { meals = it })
     TextButton(
       onClick = {
@@ -314,25 +370,6 @@ fun SettingsScreen(vm: TrackerViewModel, onDismiss: () -> Unit) {
           vm.run { vm.prefs.set("reminders", it.toString()) }
           if (it && Build.VERSION.SDK_INT >= 33)
             notifications.launch(Manifest.permission.POST_NOTIFICATIONS)
-        },
-      )
-    }
-    Row {
-      Text("Require device unlock on app launch", Modifier.weight(1f))
-      Switch(
-        biometric,
-        { enabled ->
-          val manager = androidx.biometric.BiometricManager.from(context)
-          if (
-            !enabled ||
-              manager.canAuthenticate(
-                androidx.biometric.BiometricManager.Authenticators.BIOMETRIC_STRONG or
-                  androidx.biometric.BiometricManager.Authenticators.DEVICE_CREDENTIAL
-              ) == androidx.biometric.BiometricManager.BIOMETRIC_SUCCESS
-          ) {
-            biometric = enabled
-            vm.run { vm.prefs.set("biometric", enabled.toString()) }
-          } else status = "Set up a device PIN or biometrics first."
         },
       )
     }

@@ -432,6 +432,7 @@ data class AppState(
   val water: List<Water> = emptyList(),
   val waterGoalMl: Int = 2000,
   val waterQuickAmountsMl: List<Int> = listOf(250, 500),
+  val fasting: FastingWindow = FastingWindow(),
   val mealTemplates: List<MealTemplate> = emptyList(),
   val meals: List<String> = listOf("Breakfast", "Lunch", "Dinner", "Snacks"),
 ) {
@@ -474,6 +475,7 @@ data class AppState(
     }
     require(waterGoalMl in 250..10000)
     require(waterQuickAmountsMl.isNotEmpty() && waterQuickAmountsMl.all { it in 50..2000 })
+    fasting.validate()
     mealTemplates.forEach { template ->
       require(template.name.isNotBlank() && template.meal.isNotBlank() && template.items.isNotEmpty())
       template.items.forEach { it.food.portion(it.amount, it.unit) }

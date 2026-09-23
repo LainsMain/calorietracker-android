@@ -29,7 +29,7 @@ Online search, AI requests and update downloads use the relevant external provid
 
 1. Download the APK from Releases and approve its installation in Android.
 2. Complete the guided setup, choose a sustainable pace, and preview the suggested targets.
-3. In Settings, connect Health Connect if you use a compatible fitness app.
+3. In Settings, connect Health Connect if you use a compatible fitness app. Optionally set daily eating hours under Fasting; tracking remains available outside the window.
 4. Optionally enter a DeepSeek API key. AI requests are billed to that key; selected messages,
    images and relevant diary/health context are sent to DeepSeek.
 5. Export an encrypted backup before uninstalling or changing phones. There is no automatic cloud sync.

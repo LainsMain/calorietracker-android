@@ -17,6 +17,8 @@ import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -25,6 +27,7 @@ import com.google.mlkit.vision.barcode.BarcodeScanning
 import com.google.mlkit.vision.common.InputImage
 import java.time.LocalDate
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Composable
 fun FoodSearch(vm: TrackerViewModel, onDismiss: () -> Unit, onChoose: (Food) -> Unit) {
@@ -36,7 +39,7 @@ fun FoodSearch(vm: TrackerViewModel, onDismiss: () -> Unit, onChoose: (Food) -> 
   val results by vm.results.collectAsStateWithLifecycle()
   val searching by vm.searching.collectAsStateWithLifecycle()
   LaunchedEffect(query) { vm.search(query) }
-  Modal("Find your food", onDismiss) {
+  if (!scanning && !custom) Modal("Find your food", onDismiss) {
     Field("Search foods, brands, Dutch or French names", query, { query = it })
     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
       FilledTonalButton(onClick = { scanning = true }) {
@@ -298,60 +301,72 @@ fun Scanner(onDismiss: () -> Unit, onCode: (String) -> Unit) {
   }
   val permission =
     rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { allowed = it }
-  var found by remember { mutableStateOf(false) }
+  var cameraError by remember { mutableStateOf<String?>(null) }
   LaunchedEffect(Unit) { if (!allowed) permission.launch(Manifest.permission.CAMERA) }
-  Modal("Scan a product", onDismiss) {
-    Text("Point the camera at an EAN or UPC barcode.")
-    if (allowed) {
-      val preview = remember { PreviewView(context) }
-      val executor = remember { Executors.newSingleThreadExecutor() }
-      val scanner = remember { BarcodeScanning.getClient() }
-      DisposableEffect(Unit) {
-        val future = ProcessCameraProvider.getInstance(context)
-        future.addListener(
-          {
-            val provider = future.get()
-            val p =
-              Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
-            val analysis =
-              ImageAnalysis.Builder()
-                .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                .build()
-            analysis.setAnalyzer(executor) { proxy ->
-              val image = proxy.image
-              if (image != null && !found)
-                scanner
-                  .process(InputImage.fromMediaImage(image, proxy.imageInfo.rotationDegrees))
-                  .addOnSuccessListener { codes ->
-                    codes
-                      .firstOrNull { it.rawValue?.matches(Regex("[0-9]{8,14}")) == true }
-                      ?.rawValue
-                      ?.let {
-                        if (!found) {
-                          found = true
-                          onCode(it)
-                        }
-                      }
-                  }
-                  .addOnCompleteListener { proxy.close() }
-              else proxy.close()
-            }
-            try {
-              provider.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, p, analysis)
-            } catch (_: Exception) {}
-          },
-          ContextCompat.getMainExecutor(context),
-        )
-        onDispose {
-          if (future.isDone) future.get().unbindAll()
-          scanner.close()
-          executor.shutdown()
+  val preview = remember(context) { PreviewView(context) }
+  if (allowed) DisposableEffect(lifecycle, preview) {
+    val stopped = AtomicBoolean(false)
+    val found = AtomicBoolean(false)
+    val executor = Executors.newSingleThreadExecutor()
+    val scanner = BarcodeScanning.getClient()
+    var provider: ProcessCameraProvider? = null
+    var previewUseCase: Preview? = null
+    var analysisUseCase: ImageAnalysis? = null
+    val future = ProcessCameraProvider.getInstance(context)
+    future.addListener({
+      if (stopped.get()) return@addListener
+      try {
+        val active = future.get()
+        require(active.hasCamera(CameraSelector.DEFAULT_BACK_CAMERA)) { "No back camera is available." }
+        val cameraPreview = Preview.Builder().build().also { it.setSurfaceProvider(preview.surfaceProvider) }
+        val analysis = ImageAnalysis.Builder().setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST).build()
+        analysis.setAnalyzer(executor) { frame ->
+          if (stopped.get() || found.get()) { frame.close(); return@setAnalyzer }
+          try {
+            val image = frame.image ?: run { frame.close(); return@setAnalyzer }
+            scanner.process(InputImage.fromMediaImage(image, frame.imageInfo.rotationDegrees))
+              .addOnSuccessListener(ContextCompat.getMainExecutor(context)) { codes ->
+                val code = codes.firstOrNull { it.rawValue?.matches(Regex("[0-9]{8,14}")) == true }?.rawValue
+                if (code != null && !stopped.get() && found.compareAndSet(false, true)) onCode(code)
+              }
+              .addOnCompleteListener(ContextCompat.getMainExecutor(context)) { frame.close() }
+          } catch (_: Exception) { frame.close() }
+        }
+        active.bindToLifecycle(lifecycle, CameraSelector.DEFAULT_BACK_CAMERA, cameraPreview, analysis)
+        provider = active
+        previewUseCase = cameraPreview
+        analysisUseCase = analysis
+      } catch (_: Exception) {
+        cameraError = "The camera could not start. You can enter the barcode instead."
+      }
+    }, ContextCompat.getMainExecutor(context))
+    onDispose {
+      stopped.set(true)
+      runCatching { provider?.unbind(*listOfNotNull(previewUseCase, analysisUseCase).toTypedArray()) }
+      runCatching { scanner.close() }
+      executor.shutdown()
+    }
+  }
+  Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
+    Surface(Modifier.fillMaxSize()) {
+      Column(Modifier.fillMaxSize()) {
+        Row(Modifier.fillMaxWidth().padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+          IconButton(onClick = onDismiss) { Icon(Icons.Rounded.ArrowBack, "Close") }
+          Text("Scan a product", style = MaterialTheme.typography.headlineSmall)
+        }
+        if (allowed && cameraError == null)
+          AndroidView(factory = { preview }, modifier = Modifier.fillMaxWidth().weight(1f))
+        else Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+          Column(Modifier.padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            Text(cameraError ?: "Allow camera access to scan a barcode.")
+            if (!allowed) Button(onClick = { permission.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
+          }
+        }
+        Column(Modifier.fillMaxWidth().padding(20.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+          Text("Point your camera at an EAN or UPC barcode.")
+          OutlinedButton(onClick = onDismiss, modifier = Modifier.fillMaxWidth()) { Text("Enter barcode instead") }
         }
       }
-      AndroidView(factory = { preview }, modifier = Modifier.fillMaxWidth().height(360.dp))
-    } else {
-      Text("Camera access is needed to scan. You can also type the barcode in food search.")
-      Button(onClick = { permission.launch(Manifest.permission.CAMERA) }) { Text("Allow camera") }
     }
   }
 }

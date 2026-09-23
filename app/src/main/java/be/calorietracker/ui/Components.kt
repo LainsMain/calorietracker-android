@@ -123,17 +123,14 @@ fun Modal(title: String, onDismiss: () -> Unit, content: @Composable ColumnScope
     onDismissRequest = onDismiss,
     properties = DialogProperties(usePlatformDefaultWidth = false),
   ) {
-    Surface(
-      Modifier.fillMaxWidth().padding(12.dp).heightIn(max = 780.dp),
-      shape = RoundedCornerShape(28.dp),
-    ) {
+    Surface(Modifier.fillMaxSize()) {
       Column(
-        Modifier.padding(20.dp).verticalScroll(rememberScrollState()).imePadding(),
+        Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp),
       ) {
         Row(verticalAlignment = Alignment.CenterVertically) {
-          Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
-          IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
+          IconButton(onClick = onDismiss) { Icon(Icons.Rounded.ArrowBack, "Close") }
+          Text(title, style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
         }
         content()
       }
@@ -146,7 +143,7 @@ fun ActionModal(
   title: String,
   onDismiss: () -> Unit,
   action: @Composable () -> Unit,
-  fullScreen: Boolean = false,
+  fullScreen: Boolean = true,
   content: @Composable ColumnScope.() -> Unit,
 ) {
   Dialog(onDismissRequest = onDismiss, properties = DialogProperties(usePlatformDefaultWidth = false)) {
@@ -154,7 +151,7 @@ fun ActionModal(
       Column(Modifier.imePadding()) {
         Row(Modifier.fillMaxWidth().padding(start = 20.dp, end = 8.dp, top = 12.dp), verticalAlignment = Alignment.CenterVertically) {
           Text(title, Modifier.weight(1f), style = MaterialTheme.typography.titleLarge, maxLines = 2)
-          IconButton(onClick = onDismiss) { Icon(Icons.Rounded.Close, "Close") }
+          IconButton(onClick = onDismiss) { Icon(Icons.Rounded.ArrowBack, "Close") }
         }
         Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(12.dp), content = content)
         HorizontalDivider()
