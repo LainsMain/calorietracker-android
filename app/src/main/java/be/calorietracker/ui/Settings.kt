@@ -26,7 +26,7 @@ import java.time.format.DateTimeFormatter
 fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss: () -> Unit) {
   val context = LocalContext.current
   var page by remember(initialPage) { mutableStateOf(initialPage) }
-  var theme by remember { mutableStateOf("System") }
+  var theme by remember { mutableStateOf("Dark") }
   var dynamicColour by remember { mutableStateOf(false) }
   var energyUnit by remember { mutableStateOf("kcal") }
   var profileEditor by remember { mutableStateOf(false) }
@@ -51,7 +51,7 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
   var fastingStart by remember { mutableStateOf(vm.state.value.fasting.starts) }
   var fastingEnd by remember { mutableStateOf(vm.state.value.fasting.ends) }
   LaunchedEffect(Unit) {
-    theme = vm.prefs.get("theme", "System")
+    theme = vm.prefs.get("theme", "Dark")
     dynamicColour = vm.prefs.get("dynamicColour") == "true"
     energyUnit = vm.prefs.get("energyUnit", "kcal")
     hasKey = vm.prefs.apiKey().isNotBlank()
@@ -99,9 +99,11 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
     }
   Modal(if (page == "Home") "Settings" else page, { if (page == "Home") onDismiss() else page = "Home" }) {
     if (page == "Home") {
-    Text("LOCAL BY DESIGN", style = MaterialTheme.typography.labelMedium)
+    Text("LOCAL BY DESIGN", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
     Text(
-      "Your diary, photos and chat are encrypted on this device. There is no account or automatic cloud backup."
+      "Your diary, photos and chat stay encrypted on this device.",
+      style = MaterialTheme.typography.bodyMedium,
+      color = MaterialTheme.colorScheme.onSurfaceVariant,
     )
     listOf(
       "Coach & privacy" to "AI key and private chat",
@@ -112,14 +114,12 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
       "Backup & updates" to "Keep your data safe and current",
       "Sources & licenses" to "Food data, source code and deletion",
     ).forEach { (title, detail) ->
-      Surface(onClick = { page = title }, shape = MaterialTheme.shapes.large, color = MaterialTheme.colorScheme.surfaceContainer) {
-        Row(Modifier.fillMaxWidth().padding(18.dp)) {
+      FlatRow(onClick = { page = title }) {
           Column(Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.titleMedium)
-            Text(detail, style = MaterialTheme.typography.bodySmall)
+            Text(detail, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
           }
-          Text("›", style = MaterialTheme.typography.titleLarge)
-        }
+          Text("›", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
     }
     }
@@ -196,14 +196,10 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
       }
     }
     if (page == "Health Connect") {
-    Section("Health & activity")
-    Text(
-      "Runs, workouts, steps, distance, energy, and weight can be read from Health Connect. Activity helps explain your weekly trend; it never raises today's food budget."
-    )
     val stale = remember(healthSync) {
       healthSync.isNotBlank() && runCatching { java.time.Duration.between(Instant.parse(healthSync), Instant.now()).toHours() > 24 }.getOrDefault(false)
     }
-    Panel(tint = if (healthGranted.isNotEmpty()) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceContainer) {
+    Panel(tint = MaterialTheme.colorScheme.surfaceContainerLow) {
       Text(
         when {
           !vm.health.available() -> "Health Connect unavailable"
@@ -216,12 +212,12 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
         style = MaterialTheme.typography.titleMedium,
       )
       if (healthGranted.isNotEmpty()) {
-        Text("${healthGranted.intersect(vm.health.permissions).size} data permissions granted")
-        Text(if (healthSync.isBlank()) "Connected with no data yet" else "Last refreshed ${localDateTime(healthSync)}")
-        Text(if (healthSources.isBlank()) "No workout apps have shared data yet" else "Workout apps: $healthSources")
+        Text("${healthGranted.intersect(vm.health.permissions).size} permissions · ${if (healthSync.isBlank()) "Never synced" else "Last sync ${localDateTime(healthSync)}"}", style = MaterialTheme.typography.bodyMedium)
+        if (healthSources.isNotBlank()) Text(healthSources, style = MaterialTheme.typography.bodyMedium)
       }
       if (healthError.isNotBlank()) Text("Last refresh failed. Your existing activity is unchanged.", color = MaterialTheme.colorScheme.error)
     }
+    Section("Permissions")
     Button(
       onClick = {
         if (vm.health.available()) permissions.launch(vm.health.permissions)
@@ -234,12 +230,13 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
           )
       }
     ) {
-      Text("Connect / manage permissions")
+      Text(if (healthGranted.isNotEmpty()) "Manage permissions" else "Connect Health Connect")
     }
     if (vm.health.optionalPermissions().isNotEmpty())
       TextButton(onClick = { permissions.launch(vm.health.optionalPermissions()) }) {
         Text("Allow background sync / older history")
       }
+    Section("Sync")
     OutlinedButton(
       onClick = {
         vm.run {
@@ -257,6 +254,7 @@ fun SettingsScreen(vm: TrackerViewModel, initialPage: String = "Home", onDismiss
     ) {
       Text("Refresh activity")
     }
+    Section("Data")
     TextButton(
       onClick = {
         vm.run {

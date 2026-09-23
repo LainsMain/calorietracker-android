@@ -1,9 +1,9 @@
-CalorieTracker 1.2.1 makes the main editing and settings flows full-screen and adds an optional daily eating window.
+CalorieTracker 1.3.0 brings a calmer Material 3 design while keeping your diary, plans, recipes, coach chats, fasting schedule and Health Connect data intact.
 
-- Settings, food search, recipe editing, portion logging, and chat history now open as full-screen pages. Food logging uses a clear button on Today and Diary instead of a floating button.
-- Settings separates appearance from tracking controls, and adds a dedicated Fasting page.
-- Choose a 12:12, 14:10, or 16:8 eating window, or enter custom times. Today shows whether your window is open and when it changes next. You can still log food at any time; the window does not change your calorie allowance.
-- The barcode scanner now opens in a full-screen camera view, handles camera setup failures without closing the app, and lets you enter the barcode manually.
-- Existing plans, diary entries, and backups remain readable.
+- Today now combines daily energy and macros in one clear summary. Activity, water, fasting and meals are easier to scan.
+- Diary foods and activity history use compact rows instead of separate cards for every item. Settings now uses familiar Android list rows.
+- Coach conversations have quieter replies and a simpler toolbar. Recipes and Progress have clearer emphasis and less persistent guidance.
+- Plan review uses cleaner aqua sliders and a consistent four-step layout. The fat target slider now uses its intended 25–35% range.
+- Aqua is the main action and navigation colour; warm gold is reserved for occasional accents. Dark teal remains the default appearance, with Light and System available in Settings.
 
 Android 10 or newer. Online food search and coach replies require connectivity. Android confirms APK installation.

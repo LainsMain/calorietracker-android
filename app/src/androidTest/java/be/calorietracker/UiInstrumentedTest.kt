@@ -165,7 +165,7 @@ class UiInstrumentedTest {
       }
     }
     compose.waitUntil(15000) {
-      compose.onAllNodesWithText("YOUR DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithText("DAILY ENERGY").fetchSemanticsNodes().isNotEmpty()
     }
     snapshot("today")
     compose.onNodeWithTag("today-list").performScrollToNode(hasText("Morning run"))
@@ -178,11 +178,12 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Overnight oats with berries").assertIsDisplayed()
     compose.onNodeWithText("Recipes").performClick()
     compose.onNodeWithText("Made by you").assertIsDisplayed()
+    snapshot("recipes")
     compose.onNodeWithText("Progress").performClick()
     compose.onNodeWithText("Your progress").assertIsDisplayed()
     snapshot("progress")
     compose.onNodeWithText("Coach").performClick()
-    compose.onNodeWithText("Your coach").assertIsDisplayed()
+    compose.onAllNodesWithText("Coach").onLast().assertIsDisplayed()
     compose.waitUntil(5000) {
       compose.onAllNodesWithText("I prepared one reviewed change.").fetchSemanticsNodes().isNotEmpty()
     }
@@ -231,6 +232,10 @@ class UiInstrumentedTest {
     compose.onNodeWithContentDescription("Settings").performClick()
     compose.onNodeWithText("Settings").assertIsDisplayed()
     snapshot("settings-home")
+    compose.onNodeWithText("Health Connect").performClick()
+    compose.waitUntil(5000) { compose.onAllNodesWithText("Permissions").fetchSemanticsNodes().isNotEmpty() }
+    snapshot("health-connect")
+    compose.onNodeWithContentDescription("Close").performClick()
     compose.onNodeWithText("Appearance").performClick()
     snapshot("settings-tracking")
   }
@@ -258,11 +263,19 @@ class UiInstrumentedTest {
       }
     }
     compose.waitUntil(15000) {
-      compose.onAllNodesWithContentDescription("Review plan").fetchSemanticsNodes().isNotEmpty()
+      compose.onAllNodesWithTag("today-list").fetchSemanticsNodes().isNotEmpty()
     }
-    compose.onNodeWithContentDescription("Review plan").performClick()
+    compose.onNodeWithTag("today-list").performScrollToNode(hasText("Review my plan"))
+    compose.onNodeWithText("Review my plan").performClick()
     compose.onNodeWithText("The facts behind your estimate").assertIsDisplayed()
     compose.onNodeWithText("Step 1 of 4").assertIsDisplayed()
+    snapshot("plan-step-1")
+    compose.onNodeWithText("Continue").performClick()
+    snapshot("plan-step-2")
+    compose.onNodeWithText("Continue").performClick()
+    snapshot("plan-step-3")
+    compose.onNodeWithText("Continue").performClick()
+    snapshot("plan-step-4")
     compose.onNodeWithContentDescription("Close").performClick()
     compose.waitUntil(5000) {
       compose.onAllNodesWithText("Your weekly check-in is ready").fetchSemanticsNodes().isNotEmpty()

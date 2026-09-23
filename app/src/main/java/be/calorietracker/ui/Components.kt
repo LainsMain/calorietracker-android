@@ -28,7 +28,7 @@ fun Double?.fmt(digits: Int = 0) =
 
 @Composable
 fun PageTitle(eyebrow: String, title: String, action: (@Composable () -> Unit)? = null) {
-  Column(Modifier.padding(top = 10.dp, bottom = 6.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+  Column(Modifier.padding(top = 8.dp, bottom = 4.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
     Text(
       eyebrow.uppercase(),
       style = MaterialTheme.typography.labelMedium,
@@ -47,10 +47,10 @@ fun Panel(
   tint: Color = MaterialTheme.colorScheme.surfaceContainer,
   content: @Composable ColumnScope.() -> Unit,
 ) {
-  Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(24.dp), color = tint) {
+  Surface(modifier.fillMaxWidth(), shape = RoundedCornerShape(22.dp), color = tint) {
     Column(
-      Modifier.padding(18.dp),
-      verticalArrangement = Arrangement.spacedBy(10.dp),
+      Modifier.padding(16.dp),
+      verticalArrangement = Arrangement.spacedBy(8.dp),
       content = content,
     )
   }
@@ -59,7 +59,7 @@ fun Panel(
 @Composable
 fun Section(title: String, action: String? = null, onAction: () -> Unit = {}) {
   Row(
-    Modifier.fillMaxWidth().padding(top = 12.dp),
+    Modifier.fillMaxWidth().padding(top = 10.dp),
     verticalAlignment = Alignment.CenterVertically,
   ) {
     Text(title, style = MaterialTheme.typography.titleLarge, modifier = Modifier.weight(1f))
@@ -69,16 +69,18 @@ fun Section(title: String, action: String? = null, onAction: () -> Unit = {}) {
 
 @Composable
 fun EmptyState(title: String, body: String, action: String? = null, onAction: () -> Unit = {}) {
-  Panel {
-    Icon(
-      Icons.Rounded.Spa,
-      null,
-      tint = MaterialTheme.colorScheme.primary,
-      modifier = Modifier.size(32.dp),
-    )
-    Text(title, style = MaterialTheme.typography.titleLarge)
-    Text(body, color = MaterialTheme.colorScheme.onSurfaceVariant)
-    if (action != null) Button(onClick = onAction) { Text(action) }
+  Column(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Text(title, style = MaterialTheme.typography.titleMedium)
+    Text(body, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    if (action != null) TextButton(onClick = onAction) { Text(action) }
+  }
+}
+
+@Composable
+fun FlatRow(onClick: () -> Unit, content: @Composable RowScope.() -> Unit) {
+  Column {
+    Row(Modifier.fillMaxWidth().heightIn(min = 56.dp).clickable(onClick = onClick).padding(vertical = 10.dp), verticalAlignment = Alignment.CenterVertically, content = content)
+    HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .18f))
   }
 }
 
@@ -111,7 +113,7 @@ fun Choice(label: String, options: List<String>, selected: String, onChoose: (St
       horizontalArrangement = Arrangement.spacedBy(8.dp),
     ) {
       options.forEach {
-        FilterChip(selected = it == selected, onClick = { onChoose(it) }, label = { Text(it) })
+        FilterChip(selected = it == selected, onClick = { onChoose(it) }, label = { Text(it) }, modifier = Modifier.heightIn(min = 48.dp))
       }
     }
   }
