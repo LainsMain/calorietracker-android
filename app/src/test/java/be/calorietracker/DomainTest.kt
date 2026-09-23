@@ -34,6 +34,22 @@ class DomainTest {
     assertEquals(2000, state.waterGoalMl)
     assertEquals(listOf(250, 500), state.waterQuickAmountsMl)
     assertTrue(state.mealTemplates.isEmpty())
+    assertFalse(state.fasting.enabled)
+  }
+
+  @Test
+  fun fastingWindowHandlesOvernightAndBrusselsDst() {
+    val brussels = ZoneId.of("Europe/Brussels")
+    val overnight = FastingWindow(true, "20:00", "08:00")
+    val evening = ZonedDateTime.of(2026, 9, 23, 22, 0, 0, 0, brussels)
+    assertTrue(overnight.status(evening).canEat)
+    assertEquals(LocalDate.of(2026, 9, 24), overnight.status(evening).nextTransition.toLocalDate())
+    assertFalse(overnight.status(evening.withHour(12)).canEat)
+
+    val spring = FastingWindow(true, "01:00", "03:30")
+    val beforeJump = ZonedDateTime.of(2026, 3, 29, 1, 30, 0, 0, brussels)
+    assertTrue(spring.status(beforeJump).canEat)
+    assertEquals(60, Duration.between(beforeJump, spring.status(beforeJump).nextTransition).toMinutes())
   }
 
   @Test

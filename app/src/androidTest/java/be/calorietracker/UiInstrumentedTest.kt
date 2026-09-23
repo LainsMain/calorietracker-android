@@ -1,6 +1,5 @@
 package be.calorietracker
 
-import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.test.*
 import androidx.compose.ui.test.junit4.createAndroidComposeRule
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -26,6 +25,51 @@ class UiInstrumentedTest {
         .store()
     store.load()
     store.clear()
+  }
+
+  @Test
+  fun scannerOpensWithoutCrashing() {
+    val store = EntryPointAccessors.fromApplication(compose.activity.application, WorkerServices::class.java).store()
+    runBlocking {
+      store.load()
+      val profile = Profile(name = "Scanner test")
+      store.update { AppState(profile = profile, plans = listOf(PlanCalculator.suggest(profile))) }
+    }
+    androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.grantRuntimePermission(compose.activity.packageName, android.Manifest.permission.CAMERA)
+    compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Log food").fetchSemanticsNodes().isNotEmpty() }
+    compose.onNodeWithContentDescription("Log food").performClick()
+    compose.onNodeWithText("Find your food").assertIsDisplayed()
+    snapshot("food-search")
+    compose.onNode(hasText("Scan", substring = true)).performClick()
+    compose.onNodeWithText("Scan a product").assertIsDisplayed()
+    Thread.sleep(2000)
+    compose.onNodeWithText("Scan a product").assertIsDisplayed()
+    compose.onNodeWithContentDescription("Close").performClick()
+    compose.onNodeWithText("Find your food").assertIsDisplayed()
+    compose.onNode(hasText("Scan", substring = true)).performClick()
+    compose.onNodeWithText("Scan a product").assertIsDisplayed()
+  }
+
+  @Test
+  fun fastingCanBeEnabledAndShownOnToday() {
+    val store = EntryPointAccessors.fromApplication(compose.activity.application, WorkerServices::class.java).store()
+    runBlocking {
+      store.load()
+      val profile = Profile(name = "Fasting test")
+      store.update { AppState(profile = profile, plans = listOf(PlanCalculator.suggest(profile))) }
+    }
+    compose.waitUntil(5000) { compose.onAllNodesWithContentDescription("Settings").fetchSemanticsNodes().isNotEmpty() }
+    compose.onNodeWithContentDescription("Settings").performClick()
+    compose.onNodeWithText("Fasting").performScrollTo().performClick()
+    compose.onNode(isToggleable()).performClick()
+    compose.onNodeWithText("Save eating window").performClick()
+    compose.waitUntil(5000) { store.state.value.fasting.enabled }
+    compose.onNodeWithContentDescription("Close").performClick()
+    compose.onNodeWithContentDescription("Close").performClick()
+    compose.waitForIdle()
+    snapshot("fasting")
+    compose.onNode(hasText("Eating window", substring = true)).assertIsDisplayed()
+    compose.onNodeWithContentDescription("Log food").assertExists()
   }
 
   @Test
@@ -168,6 +212,7 @@ class UiInstrumentedTest {
     }
     compose.onNodeWithContentDescription("Log food").performClick()
     compose.onNodeWithText("Find your food").assertIsDisplayed()
+    snapshot("food-search")
     compose.onNodeWithText("Create food").performClick()
     compose.onNodeWithText("Food name").performTextInput("Test custom food")
     compose.onNodeWithText("Energy (kcal)").performTextInput("120")
@@ -183,6 +228,11 @@ class UiInstrumentedTest {
     compose.onNodeWithText("Usual breakfast").performClick()
     compose.onNodeWithText("Log meal").performClick()
     compose.waitUntil(5000) { store.state.value.entries.count { it.food.name == "Test custom food" } == 2 }
+    compose.onNodeWithContentDescription("Settings").performClick()
+    compose.onNodeWithText("Settings").assertIsDisplayed()
+    snapshot("settings-home")
+    compose.onNodeWithText("Appearance").performClick()
+    snapshot("settings-tracking")
   }
 
   @Test
@@ -224,10 +274,10 @@ class UiInstrumentedTest {
 
   private fun snapshot(name: String) {
     compose.waitForIdle()
-    val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+    val bitmap = androidx.test.platform.app.InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot()
     val values =
       android.content.ContentValues().apply {
-        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "calorietracker-$name.png")
+        put(android.provider.MediaStore.Images.Media.DISPLAY_NAME, "calorietracker-$name-${System.currentTimeMillis()}.png")
         put(android.provider.MediaStore.Images.Media.MIME_TYPE, "image/png")
         put(android.provider.MediaStore.Images.Media.RELATIVE_PATH, "Pictures/CalorieTrackerQA")
       }

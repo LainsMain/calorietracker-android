@@ -19,7 +19,7 @@ Back up **both** `release.jks` and `credentials.json` to a secure owner-controll
 Losing the signing key prevents in-place updates to installed apps. Never commit these files.
 
 `python scripts/create_signing.py` creates an identity only when no credentials exist.
-`python scripts/build_release.py 1.2.0 5` builds locally using the owner-held identity.
+`python scripts/build_release.py 1.2.1 6` builds locally using the owner-held identity.
 Other machines can provide `SIGNING_STORE_FILE`, `SIGNING_STORE_PASSWORD` and
 `SIGNING_KEY_PASSWORD` environment variables directly to `./gradlew :app:assembleRelease`.
 Alias: `calorietracker`.

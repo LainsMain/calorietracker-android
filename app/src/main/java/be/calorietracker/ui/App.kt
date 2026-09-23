@@ -30,6 +30,7 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
   val error by vm.error.collectAsStateWithLifecycle()
   var tab by rememberSaveable { mutableIntStateOf(0) }
   var settings by remember { mutableStateOf(false) }
+  var settingsPage by remember { mutableStateOf("Home") }
   var planEditor by remember { mutableStateOf(false) }
   var planSeed by remember { mutableStateOf<Plan?>(null) }
   var weeklyPeriod by remember { mutableStateOf<ClosedRange<LocalDate>?>(null) }
@@ -66,19 +67,6 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
             }
         }
     },
-    floatingActionButton = {
-      if (ready && state.profile != null && tab in listOf(0, 1))
-        ExtendedFloatingActionButton(
-          modifier = Modifier.semantics { contentDescription = "Log food" },
-          onClick = {
-            if (tab == 0) date = today()
-            foodSearch = true
-          },
-          icon = { Icon(Icons.Rounded.Add, null) },
-          text = { Text("Log food") },
-          containerColor = MaterialTheme.colorScheme.primaryContainer,
-        )
-    },
   ) { padding ->
     if (!ready)
       Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
@@ -98,7 +86,7 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
             modifier = Modifier.weight(1f),
           )
           IconButton(onClick = { planSeed = state.plan(); planEditor = true }) { Icon(Icons.Rounded.Tune, "Review plan") }
-          IconButton(onClick = { settings = true }) { Icon(Icons.Rounded.Settings, "Settings") }
+          IconButton(onClick = { settingsPage = "Home"; settings = true }) { Icon(Icons.Rounded.Settings, "Settings") }
         }
         when (tab) {
           0 ->
@@ -114,15 +102,16 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
               { tab = 4 },
               { weeklyPeriod = it },
               { draft -> planSeed = draft; planEditor = true },
+              { settingsPage = "Fasting"; settings = true },
             )
-          1 -> DiaryScreen(vm, state, date, { date = it }, { editing = it })
+          1 -> DiaryScreen(vm, state, date, { date = it }, { editing = it }, { foodSearch = true })
           2 -> RecipesScreen(vm, state)
           3 -> ProgressScreen(vm, state)
           4 -> CoachScreen(vm, state)
         }
       }
   }
-  if (settings) SettingsScreen(vm) { settings = false }
+  if (settings) SettingsScreen(vm, initialPage = settingsPage) { settings = false }
   if (planEditor)
     PlanEditor(
       planSeed ?: state.plan(),
@@ -198,6 +187,7 @@ fun TodayScreen(
   coach: () -> Unit,
   startWeekly: (ClosedRange<LocalDate>) -> Unit,
   editWeekly: (Plan) -> Unit,
+  editFasting: () -> Unit,
 ) {
   val totals = s.totals()
   val plan = s.plan()
@@ -205,7 +195,7 @@ fun TodayScreen(
   val activity = s.health.firstOrNull { it.date == today() }
   LazyColumn(
     Modifier.fillMaxSize().testTag("today-list"),
-    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 100.dp),
+    contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
     verticalArrangement = Arrangement.spacedBy(14.dp),
   ) {
     item {
@@ -213,6 +203,13 @@ fun TodayScreen(
         date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
         "Today",
       )
+    }
+    if (s.fasting.enabled) item { FastingCard(s.fasting, editFasting) }
+    item {
+      Button(onClick = log, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Log food" }) {
+        Icon(Icons.Rounded.Add, null)
+        Text("  Log food")
+      }
     }
     item { WeeklyReviewCard(vm, s, startWeekly, editWeekly, coach) }
     item {
@@ -376,6 +373,7 @@ fun DiaryScreen(
   date: String,
   onDate: (String) -> Unit,
   onEntry: (Entry) -> Unit,
+  onLog: () -> Unit,
 ) {
   var calendar by remember { mutableStateOf(false) }
   var copyMeal by remember { mutableStateOf<String?>(null) }
@@ -386,10 +384,16 @@ fun DiaryScreen(
   var full by remember { mutableStateOf(false) }
   LazyColumn(
     modifier = Modifier.testTag("diary-list"),
-    contentPadding = PaddingValues(20.dp, 0.dp, 20.dp, 100.dp),
+    contentPadding = PaddingValues(20.dp, 0.dp, 20.dp, 24.dp),
     verticalArrangement = Arrangement.spacedBy(12.dp),
   ) {
     item { PageTitle("Your food story", "Food diary") }
+    item {
+      Button(onClick = onLog, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Log food" }) {
+        Icon(Icons.Rounded.Add, null)
+        Text("  Log food for this day")
+      }
+    }
     item {
       Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         (-3L..3L).forEach { offset ->
