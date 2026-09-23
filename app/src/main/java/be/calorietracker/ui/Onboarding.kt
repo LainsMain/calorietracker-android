@@ -2,6 +2,8 @@ package be.calorietracker.ui
 
 import androidx.compose.foundation.*
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.*
 import androidx.compose.material3.*
@@ -293,16 +295,19 @@ fun PlanEditor(
     }
   }, fullScreen = true) {
     Text("Step ${step + 1} of 4", style = MaterialTheme.typography.labelLarge)
-    LinearProgressIndicator({ (step + 1) / 4f }, Modifier.fillMaxWidth())
+    Box(Modifier.fillMaxWidth().height(4.dp).background(MaterialTheme.colorScheme.surfaceContainerHigh, RoundedCornerShape(50))) {
+      Box(Modifier.fillMaxWidth((step + 1) / 4f).fillMaxHeight().background(MaterialTheme.colorScheme.primary, RoundedCornerShape(50)))
+    }
     when (step) {
       0 -> {
         Text("The facts behind your estimate", style = MaterialTheme.typography.headlineSmall)
-        Panel {
+        Panel(tint = MaterialTheme.colorScheme.surfaceContainerLow) {
+          Text("Your starting point", style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
           Text("${p.age} years · ${p.heightCm.fmt(0)} cm · ${p.weightKg.fmt(1)} kg")
           Text("${p.goal.replaceFirstChar { it.uppercase() }} weight · target ${p.targetKg.fmt(1)} kg")
-          Text("Activity multiplier ${p.activity.fmt(1)}")
+          Text("Activity · ${p.activity.fmt(1)}")
         }
-        Text("We use these details only to estimate a starting range. Your real trend will become more useful over time.")
+        Text("These details provide a starting estimate.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
       }
       1 -> {
         Text("Choose a pace that feels doable", style = MaterialTheme.typography.headlineSmall)
@@ -310,10 +315,10 @@ fun PlanEditor(
           Text("Estimated maintenance", style = MaterialTheme.typography.labelLarge)
           Text("${maintenance.fmt()} kcal", style = MaterialTheme.typography.displaySmall)
           Text("Likely range ${(.9 * maintenance).fmt()}–${(1.1 * maintenance).fmt()} kcal")
-          Text("Mifflin–St Jeor × ${p.activity.fmt(1)}; real needs vary day to day.")
         }
         if (p.goal != "maintain") {
-          Slider(pacePosition, { pacePosition = it }, valueRange = 0f..1f, steps = 5)
+          Text("Pace", style = MaterialTheme.typography.titleMedium)
+          PlanSlider(pacePosition, { pacePosition = it }, 0f..1f, 5)
           val weekly = guided?.intent?.desiredWeeklyKg ?: 0.0
           Text("About ${kotlin.math.abs(weekly).fmt(2)} kg per week", style = MaterialTheme.typography.titleMedium)
           Text(if (pacePosition < .34f) "Slower, with more room for food." else if (pacePosition < .75f) "A steady middle ground." else "Faster, with less room for food.")
@@ -322,8 +327,8 @@ fun PlanEditor(
       2 -> {
         Text("Make the target feel practical", style = MaterialTheme.typography.headlineSmall)
         Text("${guided?.kcal.fmt()} kcal per day", style = MaterialTheme.typography.displaySmall)
-        Text("Fine-tune in 50 kcal steps. This does not change your goal; it changes how assertively you approach it.")
-        Slider(offset, { offset = (it / 50).roundToInt() * 50f }, valueRange = -300f..300f, steps = 11)
+        Text("Calories", style = MaterialTheme.typography.titleMedium)
+        PlanSlider(offset, { offset = (it / 50).roundToInt() * 50f }, -300f..300f, 11)
         Text(
           when {
             offset < 0 -> "${kotlin.math.abs(offset).toDouble().fmt()} kcal less: faster, with less flexibility."
@@ -331,11 +336,11 @@ fun PlanEditor(
             else -> "Using the calculated target."
           }
         )
-        Text("Protein ${guided?.protein.fmt()} g")
-        Slider(proteinPerKg, { proteinPerKg = it }, valueRange = 1.2f..2f, steps = 7)
-        Text("Fat ${guided?.fat.fmt()} g")
-        Slider(fatFraction, { fatFraction = it }, valueRange = .25f..35f, steps = 9)
-        Text("Carbohydrates fill the remaining energy: ${guided?.carbs.fmt()} g")
+        Text("Protein · ${guided?.protein.fmt()} g", style = MaterialTheme.typography.titleMedium)
+        PlanSlider(proteinPerKg, { proteinPerKg = it }, 1.2f..2f, 7)
+        Text("Fat · ${guided?.fat.fmt()} g", style = MaterialTheme.typography.titleMedium)
+        PlanSlider(fatFraction, { fatFraction = it }, .25f.. .35f, 9)
+        Text("Carbohydrates · ${guided?.carbs.fmt()} g, calculated from remaining energy", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Row(verticalAlignment = Alignment.CenterVertically) {
           Switch(advanced, { advanced = it })
           Text("  Advanced exact targets")
@@ -349,18 +354,38 @@ fun PlanEditor(
       }
       else -> {
         Text("Your plan preview", style = MaterialTheme.typography.headlineSmall)
-        Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
+        Panel(tint = MaterialTheme.colorScheme.primaryContainer) {
           Text("${preview?.kcal.fmt()} kcal", style = MaterialTheme.typography.displaySmall)
           Text("Protein ${preview?.protein.fmt()} g · Carbs ${preview?.carbs.fmt()} g · Fat ${preview?.fat.fmt()} g")
           Text("Starts ${if (date == today()) "today" else date}")
         }
-        Text("This is a starting point. Weekly check-ins will compare your complete diary days with your weight trend before suggesting any change.")
+        Text("A starting point you can adjust as your trend develops.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         TextButton(onClick = { advanced = true; step = 2 }) { Text("Use exact targets instead") }
         if (!initial) Field("Start date", date, { date = it })
       }
     }
     ErrorText(error)
   }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PlanSlider(value: Float, onValueChange: (Float) -> Unit, range: ClosedFloatingPointRange<Float>, steps: Int) {
+  val selected = MaterialTheme.colorScheme.primary
+  val unselected = MaterialTheme.colorScheme.surfaceContainerHigh
+  val fraction = ((value - range.start) / (range.endInclusive - range.start)).coerceIn(0f, 1f)
+  Slider(
+    value = value,
+    onValueChange = onValueChange,
+    valueRange = range,
+    steps = steps,
+    thumb = { Box(Modifier.size(18.dp).background(selected, CircleShape)) },
+    track = {
+      Box(Modifier.fillMaxWidth().height(6.dp).background(unselected, RoundedCornerShape(50))) {
+        Box(Modifier.fillMaxWidth(fraction).fillMaxHeight().background(selected, RoundedCornerShape(50)))
+      }
+    },
+  )
 }
 
 @Composable

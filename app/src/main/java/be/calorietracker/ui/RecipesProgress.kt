@@ -37,11 +37,8 @@ fun RecipesScreen(vm: TrackerViewModel, s: AppState) {
         }
       }
     }
-    item {
-      Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
-        Text("Cook once. Log any portion.", style = MaterialTheme.typography.titleLarge)
-        Text("Add ingredients, weigh your finished batch, and let your diary do the maths.")
-      }
+    if (s.recipes.isEmpty()) item {
+      Text("Cook once. Log any portion.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
     if (s.recipes.isEmpty())
       item {
@@ -80,7 +77,7 @@ fun RecipesScreen(vm: TrackerViewModel, s: AppState) {
             )
           }
         }
-        Text("${r.ingredients.size} ingredients · ${r.batchGrams.fmt()} g batch · v${r.version}")
+        Text("${r.ingredients.size} ingredients · ${r.batchGrams.fmt()} g batch", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         Text(
           "${energy(r.portion(100.0).kcal)} / 100 g${if(r.estimatedWeight)" · estimated yield" else ""}"
         )
@@ -342,8 +339,7 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
           "${weights.lastOrNull()?.value.fmt(1)} kg",
           style = MaterialTheme.typography.displaySmall,
         )
-        Text("Target ${s.profile?.targetKg.fmt(1)} kg · daily fluctuations are normal")
-        Choice("Range", listOf("30 days", "90 days", "All"), when (weightRange) { 30 -> "30 days"; 90 -> "90 days"; else -> "All" }, { weightRange = when (it) { "30 days" -> 30; "90 days" -> 90; else -> Int.MAX_VALUE } })
+        Text("Target ${s.profile?.targetKg.fmt(1)} kg", style = MaterialTheme.typography.bodyMedium)
         val visibleWeights = weights.filter { weightRange == Int.MAX_VALUE || !LocalDate.parse(it.date).isBefore(LocalDate.now().minusDays(weightRange.toLong())) }
         if (visibleWeights.size >= 2) {
           WeightChart(visibleWeights, s.plans.map { it.effective })
@@ -351,30 +347,27 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
           if (changes.isNotEmpty()) Text("Plan changed ${changes.joinToString { it.effective }}", style = MaterialTheme.typography.bodySmall)
           Text("Weekly averages: ${Trends.weeklyWeights(s).joinToString(" → "){it.fmt(1)}} kg", style = MaterialTheme.typography.bodySmall)
         } else {
-          Text(if (weights.isEmpty()) "Add your first weight to start a private trend." else "Add another weight in this range to see a trend. One reading cannot show direction.", style = MaterialTheme.typography.bodyMedium)
-          TextButton(onClick = { add = true }) { Text("Add weight") }
+          Text(if (weights.isEmpty()) "Add a weigh-in to start your trend." else "Add another weigh-in to start your trend.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
       }
     }
+    item { Choice("Range", listOf("30 days", "90 days", "All"), when (weightRange) { 30 -> "30 days"; 90 -> "90 days"; else -> "All" }, { weightRange = when (it) { "30 days" -> 30; "90 days" -> 90; else -> Int.MAX_VALUE } }) }
     item { Section("Activity from Health Connect") }
     if (s.health.isEmpty())
       item { EmptyState("No imported activity yet", "Connect or refresh Health Connect in Settings. Runs and other workouts will appear here.") }
     items(s.health.sortedByDescending { it.date }.take(7)) { day ->
-      Panel {
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(LocalDate.parse(day.date).format(java.time.format.DateTimeFormatter.ofPattern("EEEE, d MMMM")), style = MaterialTheme.typography.titleMedium)
-        Text("${day.steps ?: 0} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km · ${energy(day.activeKcal)} active")
+        Text("${day.steps ?: 0} steps · ${(day.distanceMetres?.div(1000)).fmt(1)} km", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         day.workouts.forEach { WorkoutSummary(it) }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .18f))
       }
     }
     item {
-      Panel {
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Text("Consistency, not perfection", style = MaterialTheme.typography.titleLarge)
         val days = (0L..6L).map { LocalDate.now().minusDays(it).toString() }
         Text("${days.count{d->s.entries.any{it.date==d}}} of the last 7 days have food logged.")
-        Text(
-          "A logged day may be incomplete. Trends become more useful as you build your diary.",
-          style = MaterialTheme.typography.bodySmall,
-        )
       }
     }
     item { Section("Progress photos", "Add photo") { picker.launch("image/*") } }
@@ -403,7 +396,7 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
     }
     item { Section("Measurements", "Add") { add = true } }
     items(s.measurements.sortedByDescending { it.date }.take(30)) { m ->
-      Panel {
+      Column(Modifier.fillMaxWidth()) {
         Row {
           Column(Modifier.weight(1f)) {
             Text(
@@ -425,11 +418,12 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
               Icon(Icons.Rounded.DeleteOutline, "Delete measurement")
             }
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .18f))
       }
     }
     item { Section("Plan history") }
     items(s.plans.sortedByDescending { it.created }) { p ->
-      Panel {
+      Column(Modifier.fillMaxWidth()) {
         Text(
           "${p.kcal.fmt()} kcal · from ${p.effective}",
           style = MaterialTheme.typography.titleMedium,
@@ -441,6 +435,7 @@ fun ProgressScreen(vm: TrackerViewModel, s: AppState) {
             style = MaterialTheme.typography.bodySmall,
           )
         }
+        HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .18f))
       }
     }
   }

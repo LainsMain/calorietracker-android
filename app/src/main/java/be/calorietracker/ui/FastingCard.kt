@@ -25,14 +25,13 @@ fun FastingCard(window: FastingWindow, onEdit: () -> Unit) {
   val status = window.status(clock)
   val remaining = Duration.between(clock, status.nextTransition).toMinutes().coerceAtLeast(0)
   val time = DateTimeFormatter.ofPattern("HH:mm")
-  Panel(tint = if (status.canEat) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.secondaryContainer) {
+  Column(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalArrangement = Arrangement.spacedBy(2.dp)) {
     Row(Modifier.fillMaxWidth(), verticalAlignment = androidx.compose.ui.Alignment.CenterVertically) {
       Icon(Icons.Rounded.Schedule, null, tint = MaterialTheme.colorScheme.primary)
       Spacer(Modifier.width(10.dp))
-      Text(if (status.canEat) "Eating window open" else "Fasting now", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+      Text(if (status.canEat) "Eating window" else "Fasting now", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
       TextButton(onClick = onEdit) { Text("Edit") }
     }
-    Text("Eat ${window.starts}–${window.ends} · ${if (status.canEat) "closes" else "opens"} at ${status.nextTransition.format(time)} · ${remaining / 60} h ${remaining % 60} min left")
-    Text("You can log food anytime; fasting does not change your calorie target.", style = MaterialTheme.typography.bodySmall)
+    Text("${window.starts}–${window.ends} · ${if (status.canEat) "closes" else "opens"} in ${remaining / 60} h ${remaining % 60} min", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
   }
 }

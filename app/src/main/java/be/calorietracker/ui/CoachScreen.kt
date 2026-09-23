@@ -112,18 +112,12 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
   }
   Column(Modifier.fillMaxSize()) {
     Column(Modifier.padding(horizontal = 20.dp)) {
-      PageTitle("YOUR COACH", activeTitle) {
-        IconButton(onClick = { chatTitle = activeTitle; rename = true }) { Icon(Icons.Rounded.Edit, "Rename chat") }
-        IconButton(onClick = { showInfo = true }) { Icon(Icons.Rounded.Info, "Conversation information") }
+      PageTitle(if (activeTitle == "Your coach") "New conversation" else activeTitle, "Coach") {
         IconButton(onClick = { showSearch = !showSearch }) {
           Icon(Icons.Rounded.Search, "Search conversation")
         }
-      }
-      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-        OutlinedButton(onClick = { showChats = true }, modifier = Modifier.semantics { contentDescription = "Chat history" }) { Icon(Icons.Rounded.History, null); Text(" History") }
-        FilledTonalButton(onClick = { vm.run { vm.store.newConversation() } }, enabled = !busy, modifier = Modifier.semantics { contentDescription = "New chat" }) {
-          Icon(Icons.Rounded.AddComment, null); Text(" New chat")
-        }
+        IconButton(onClick = { showChats = true }) { Icon(Icons.Rounded.History, "Chat history") }
+        IconButton(onClick = { vm.run { vm.store.newConversation() } }, enabled = !busy) { Icon(Icons.Rounded.AddComment, "New chat") }
       }
     }
     LazyColumn(
@@ -160,28 +154,29 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
           if (index == 0 || messageDay(visibleMessages[index - 1]) != day)
             Text(day, Modifier.fillMaxWidth().padding(top = 8.dp), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
           Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = if (m.role == "user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
+            modifier = if (m.role == "user") Modifier.fillMaxWidth(.9f).align(Alignment.End) else Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(if (m.role == "user") 20.dp else 12.dp),
+            color = if (m.role == "user") MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.background,
           ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(7.dp)) {
               Text(if (m.role == "user") "You" else "Coach", style = MaterialTheme.typography.labelSmall)
               m.photoIds.forEach { LocalPhoto(vm, it, Modifier.fillMaxWidth().height(180.dp)) }
               if (m.role == "assistant") MarkdownText(m.text) else Text(m.text)
               Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                 Text(messageTime(m), Modifier.weight(1f), style = MaterialTheme.typography.labelSmall)
-                IconButton({ clipboard.setText(AnnotatedString(m.text)) }, Modifier.size(32.dp)) {
+                IconButton({ clipboard.setText(AnnotatedString(m.text)) }, Modifier.size(48.dp)) {
                   Icon(Icons.Rounded.ContentCopy, "Copy message", Modifier.size(18.dp))
                 }
-                IconButton(onClick = { delete = m }, modifier = Modifier.size(32.dp)) {
+                IconButton(onClick = { delete = m }, modifier = Modifier.size(48.dp)) {
                   Icon(Icons.Rounded.DeleteOutline, "Delete message", Modifier.size(18.dp))
                 }
               }
             }
           }
           if (m.role == "assistant" && m.contextKind == "weekly_check_in") {
-            Panel(tint = MaterialTheme.colorScheme.tertiaryContainer) {
+            Panel(tint = MaterialTheme.colorScheme.surfaceContainerLow) {
               Text("Weekly insight", style = MaterialTheme.typography.titleMedium)
-              Text("This explanation uses the saved weekly calculation. Any target change still needs your approval on Today.")
+              Text("Based on your saved weekly check-in.", style = MaterialTheme.typography.bodyMedium)
             }
           }
           if (
@@ -299,6 +294,8 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
         vm.run { vm.store.newConversation() }
         showChats = false
       }, modifier = Modifier.fillMaxWidth()) { Text("New chat") }
+      TextButton(onClick = { chatTitle = activeTitle; rename = true; showChats = false }) { Text("Rename current chat") }
+      TextButton(onClick = { showInfo = true; showChats = false }) { Text("Conversation information") }
       chats.forEach { chat ->
         val first =
           s.messages.firstOrNull {

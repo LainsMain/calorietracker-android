@@ -49,7 +49,7 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
     snackbarHost = { SnackbarHost(snackbar) },
     bottomBar = {
       if (ready && state.profile != null)
-        NavigationBar(containerColor = MaterialTheme.colorScheme.surface) {
+        NavigationBar(containerColor = MaterialTheme.colorScheme.surfaceContainerLow) {
           listOf(
               "Today" to Icons.Rounded.Home,
               "Diary" to Icons.Rounded.MenuBook,
@@ -63,6 +63,13 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
                 onClick = { tab = i },
                 icon = { Icon(icon, name) },
                 label = { Text(name) },
+                colors = NavigationBarItemDefaults.colors(
+                  selectedIconColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                  selectedTextColor = MaterialTheme.colorScheme.primary,
+                  indicatorColor = MaterialTheme.colorScheme.primaryContainer,
+                  unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                  unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                ),
               )
             }
         }
@@ -85,7 +92,6 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
             style = MaterialTheme.typography.titleSmall,
             modifier = Modifier.weight(1f),
           )
-          IconButton(onClick = { planSeed = state.plan(); planEditor = true }) { Icon(Icons.Rounded.Tune, "Review plan") }
           IconButton(onClick = { settingsPage = "Home"; settings = true }) { Icon(Icons.Rounded.Settings, "Settings") }
         }
         when (tab) {
@@ -196,7 +202,7 @@ fun TodayScreen(
   LazyColumn(
     Modifier.fillMaxSize().testTag("today-list"),
     contentPadding = PaddingValues(start = 20.dp, end = 20.dp, bottom = 24.dp),
-    verticalArrangement = Arrangement.spacedBy(14.dp),
+    verticalArrangement = Arrangement.spacedBy(10.dp),
   ) {
     item {
       PageTitle(
@@ -204,19 +210,11 @@ fun TodayScreen(
         "Today",
       )
     }
-    if (s.fasting.enabled) item { FastingCard(s.fasting, editFasting) }
-    item {
-      Button(onClick = log, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Log food" }) {
-        Icon(Icons.Rounded.Add, null)
-        Text("  Log food")
-      }
-    }
-    item { WeeklyReviewCard(vm, s, startWeekly, editWeekly, coach) }
     item {
       Panel(tint = MaterialTheme.colorScheme.primaryContainer) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          Text("YOUR DAILY ENERGY", style = MaterialTheme.typography.labelMedium)
-          Icon(Icons.Rounded.Bolt, null)
+          Text("DAILY ENERGY", style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .75f))
+          Icon(Icons.Rounded.Bolt, null, tint = MaterialTheme.colorScheme.primary)
         }
         Row(verticalAlignment = Alignment.Bottom) {
           Text(energyValue(totals.kcal), style = MaterialTheme.typography.displayLarge)
@@ -228,56 +226,58 @@ fun TodayScreen(
         }
         LinearProgressIndicator(
           progress = { ((totals.kcal ?: 0.0) / (plan?.kcal ?: 1.0)).toFloat().coerceIn(0f, 1f) },
-          modifier = Modifier.fillMaxWidth().height(10.dp),
+          modifier = Modifier.fillMaxWidth().height(8.dp),
           color = MaterialTheme.colorScheme.primary,
           trackColor = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .12f),
         )
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-          Text("${energy(plan?.kcal)} target")
+          Text("${energy(plan?.kcal)} target", style = MaterialTheme.typography.bodyMedium)
           Text(
             "${energyValue(plan?.kcal?.let { target -> totals.kcal?.let { target-it } })} left",
+            style = MaterialTheme.typography.bodyMedium,
             fontWeight = FontWeight.SemiBold,
           )
         }
-        if (totals.kcal == null)
-          Text("Some logged foods have unknown energy.", style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider(color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = .12f))
+        MacroLine("Protein", totals.protein, plan?.protein, MaterialTheme.colorScheme.primary)
+        MacroLine("Carbs", totals.carbs, plan?.carbs, MaterialTheme.colorScheme.primary.copy(alpha = .8f))
+        MacroLine("Fat", totals.fat, plan?.fat, MaterialTheme.colorScheme.primary.copy(alpha = .6f))
       }
     }
     item {
-      Panel {
-        MacroLine("Protein", totals.protein, plan?.protein, MaterialTheme.colorScheme.primary)
-        MacroLine("Carbs", totals.carbs, plan?.carbs, Color(0xFFC97842))
-        MacroLine("Fat", totals.fat, plan?.fat, Color(0xFF9A9B23))
+      Button(onClick = log, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = "Log food" }) {
+        Icon(Icons.Rounded.Add, null)
+        Text("  Log food")
       }
     }
+    if (s.fasting.enabled) item { FastingCard(s.fasting, editFasting) }
+    item { WeeklyReviewCard(vm, s, startWeekly, editWeekly, coach) }
     item { Section("Activity") }
     item {
-      Panel(Modifier.fillMaxWidth()) {
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Icon(Icons.Rounded.DirectionsRun, null, tint = MaterialTheme.colorScheme.primary)
-          Text("  Today’s activity", Modifier.weight(1f), style = MaterialTheme.typography.titleLarge)
-          Text(activity?.let { "Synced" } ?: "No data", style = MaterialTheme.typography.labelMedium)
+          Text("  Today’s activity", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
         }
         if (activity == null)
-          Text("Connect or refresh Health Connect in Settings to see steps and workouts here.")
+          Text("No activity imported today.", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         else {
-          Text("${activity.steps ?: 0} steps · ${(activity.distanceMetres?.div(1000)).fmt(1)} km · ${energy(activity.activeKcal)} active")
+          Text("${activity.steps ?: 0} steps · ${(activity.distanceMetres?.div(1000)).fmt(1)} km", style = MaterialTheme.typography.bodyMedium)
           activity.workouts.forEach { workout -> WorkoutSummary(workout) }
-          Text("Activity helps interpret your weekly trend; it is not added to today’s food budget.", style = MaterialTheme.typography.bodySmall)
         }
       }
     }
     item {
-      Panel(Modifier.fillMaxWidth()) {
+      Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.primary)
           Text("  Water", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-          Text("${s.water.filter{it.date==today()}.sumOf{it.ml}} / ${s.waterGoalMl} ml")
+          Text("${s.water.filter{it.date==today()}.sumOf{it.ml}} / ${s.waterGoalMl} ml", style = MaterialTheme.typography.bodyMedium)
         }
         LinearProgressIndicator(progress = { (s.water.filter { it.date == today() }.sumOf { it.ml }.toFloat() / s.waterGoalMl).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
           s.waterQuickAmountsMl.forEach { amount ->
-            FilledTonalButton(onClick = { water(amount) }) { Text("+ $amount ml") }
+            FilledTonalButton(onClick = { water(amount) }, modifier = Modifier.heightIn(min = 48.dp)) { Text("+ $amount ml") }
           }
         }
       }
@@ -309,27 +309,27 @@ fun TodayScreen(
               if (configured) it.meal.equals(meal, true) else it.meal == meal
           }
         if (entries.isNotEmpty())
-          Panel {
+          Column(Modifier.fillMaxWidth().padding(vertical = 4.dp)) {
             Row(Modifier.fillMaxWidth()) {
               Text(meal.ifBlank { "Other" }, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-              Text(energy(Nutrients.total(entries.map { it.nutrients }).kcal))
+              Text(energy(Nutrients.total(entries.map { it.nutrients }).kcal), style = MaterialTheme.typography.bodyMedium)
             }
             Text(
               entries.joinToString { it.food.name },
-              maxLines = 2,
+              maxLines = 1,
+              style = MaterialTheme.typography.bodyMedium,
               color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            HorizontalDivider(color = MaterialTheme.colorScheme.outline.copy(alpha = .18f))
           }
       }
     }
     item {
-      Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
-        Icon(Icons.Rounded.AutoAwesome, null)
-        Text("A coach who knows your story", style = MaterialTheme.typography.titleLarge)
-        Text("Reflect on your meals, understand your trends, and shape a plan that fits.")
-        TextButton(onClick = coach) {
-          Text("Check in with your coach")
-          Icon(Icons.Rounded.ArrowForward, null)
+      Surface(onClick = coach, shape = RoundedCornerShape(18.dp), color = MaterialTheme.colorScheme.secondary.copy(alpha = .16f)) {
+        Row(Modifier.fillMaxWidth().padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+          Icon(Icons.Rounded.AutoAwesome, null, tint = MaterialTheme.colorScheme.secondary)
+          Text("  Need help with today?", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+          Text("Ask coach  →", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelLarge)
         }
       }
     }
@@ -341,13 +341,11 @@ fun TodayScreen(
 fun WorkoutSummary(workout: Workout) {
   val start = java.time.Instant.parse(workout.start).atZone(java.time.ZoneId.systemDefault())
   val minutes = java.time.Duration.between(java.time.Instant.parse(workout.start), java.time.Instant.parse(workout.end)).toMinutes()
-  Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = MaterialTheme.shapes.large) {
-    Column(Modifier.fillMaxWidth().padding(12.dp)) {
+  Column(Modifier.fillMaxWidth().padding(start = 12.dp, top = 4.dp, bottom = 8.dp)) {
       Text(workout.title.ifBlank { workout.typeName }, style = MaterialTheme.typography.titleMedium)
-      Text("${start.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))} · $minutes min" + (workout.distanceMetres?.let { " · ${(it / 1000).fmt(1)} km" } ?: "") + (workout.activeKcal?.let { " · ${it.fmt()} kcal" } ?: ""))
-      Text(workout.sourceLabel, style = MaterialTheme.typography.labelSmall)
+      Text("${start.format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))} · $minutes min" + (workout.distanceMetres?.let { " · ${(it / 1000).fmt(1)} km" } ?: "") + (workout.activeKcal?.let { " · ${it.fmt()} kcal" } ?: ""), style = MaterialTheme.typography.bodyMedium)
+      Text(workout.sourceLabel, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
-  }
 }
 
 @Composable
@@ -389,7 +387,7 @@ fun DiaryScreen(
   ) {
     item { PageTitle("Your food story", "Food diary") }
     item {
-      Button(onClick = onLog, modifier = Modifier.fillMaxWidth().semantics { contentDescription = "Log food" }) {
+      Button(onClick = onLog, modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp).semantics { contentDescription = "Log food" }) {
         Icon(Icons.Rounded.Add, null)
         Text("  Log food for this day")
       }
@@ -401,6 +399,8 @@ fun DiaryScreen(
           FilterChip(
             selected = offset == 0L,
             onClick = { onDate(day.toString()) },
+            modifier = Modifier.heightIn(min = 48.dp),
+            colors = FilterChipDefaults.filterChipColors(selectedContainerColor = MaterialTheme.colorScheme.secondary.copy(alpha = .22f), selectedLabelColor = MaterialTheme.colorScheme.onSurface),
             label = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
               Text(day.format(DateTimeFormatter.ofPattern("EEE")))
               Text(day.dayOfMonth.toString())
@@ -411,12 +411,12 @@ fun DiaryScreen(
       TextButton(onClick = { calendar = true }) { Text("Choose date · ${LocalDate.parse(date).format(DateTimeFormatter.ofPattern("d MMM yyyy"))}") }
     }
     item {
-      Panel {
+      Panel(tint = MaterialTheme.colorScheme.surfaceContainerLow) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
           Text(energy(s.totals(date).kcal), style = MaterialTheme.typography.headlineMedium)
           TextButton(onClick = { full = !full }) { Text(if (full) "Less" else "All nutrients") }
         }
-        Text("Daily target ${energy(s.plan(date)?.kcal)}")
+        Text("Daily target ${energy(s.plan(date)?.kcal)}", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         if (full) NutrientGrid(s.totals(date))
       }
     }
@@ -461,23 +461,24 @@ fun DiaryScreen(
         }
       } else
         items(entries, key = { it.id }) { e ->
-          Surface(
-            onClick = { onEntry(e) },
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-          ) {
-            Row(Modifier.padding(16.dp), verticalAlignment = Alignment.CenterVertically) {
+          FlatRow(onClick = { onEntry(e) }) {
               Column(Modifier.weight(1f)) {
                 Text(e.food.name, style = MaterialTheme.typography.titleMedium)
                 Text(
-                  "${e.amount.fmt(1)} ${e.unit} · ${e.note.ifBlank{e.food.source}}",
+                  "${e.amount.fmt(1)} ${e.unit}",
                   style = MaterialTheme.typography.bodySmall,
+                  color = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
               }
-              Text(energy(e.nutrients.kcal))
-            }
+              Text(energy(e.nutrients.kcal), style = MaterialTheme.typography.bodyMedium)
           }
         }
+      if (entries.isNotEmpty()) item {
+        Row(Modifier.fillMaxWidth().padding(bottom = 8.dp), horizontalArrangement = Arrangement.SpaceBetween) {
+          Text("${meal.ifBlank { "Other" }} total", style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+          Text(energy(Nutrients.total(entries.map { it.nutrients }).kcal), style = MaterialTheme.typography.bodyMedium)
+        }
+      }
     }
   }
   templateMeal?.let { meal ->

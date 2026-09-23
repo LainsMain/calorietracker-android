@@ -20,7 +20,7 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
   var pendingUrl by remember { mutableStateOf<String?>(null) }
   val safe = safeMarkdown(markdown)
   val blocks = remember(safe) { markdownBlocks(safe) }
-  Column(modifier, verticalArrangement = Arrangement.spacedBy(7.dp)) {
+  Column(modifier, verticalArrangement = Arrangement.spacedBy(5.dp)) {
     blocks.forEach { block ->
       when (block.kind) {
         "space" -> Spacer(Modifier.height(2.dp))
@@ -31,8 +31,8 @@ fun MarkdownText(markdown: String, modifier: Modifier = Modifier) {
             fontFamily = FontFamily.Monospace,
             style = MaterialTheme.typography.bodySmall,
           )
-        "h1" -> MarkdownLine(block.text, MaterialTheme.typography.headlineSmall, onLink = { pendingUrl = it })
-        "h2" -> MarkdownLine(block.text, MaterialTheme.typography.titleLarge, onLink = { pendingUrl = it })
+        "h1" -> MarkdownLine(block.text, MaterialTheme.typography.titleMedium, onLink = { pendingUrl = it })
+        "h2" -> MarkdownLine(block.text, MaterialTheme.typography.titleMedium, onLink = { pendingUrl = it })
         "h3" -> MarkdownLine(block.text, MaterialTheme.typography.titleMedium, onLink = { pendingUrl = it })
         "quote" ->
           Surface(color = MaterialTheme.colorScheme.surfaceContainerHigh, shape = RoundedCornerShape(0.dp, 12.dp, 12.dp, 0.dp)) {

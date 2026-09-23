@@ -41,7 +41,7 @@ fun WeeklyReviewCard(
   val checkIn = s.weeklyCheckIns.lastOrNull { it.periodStart == period.start.toString() && it.status == "completed" }
   val recommendation = checkIn?.recommendationId?.let { id -> s.weeklyRecommendations.firstOrNull { it.id == id } }
   if (recommendation != null) {
-    Panel(tint = MaterialTheme.colorScheme.secondaryContainer) {
+    Panel(tint = MaterialTheme.colorScheme.secondary.copy(alpha = .16f)) {
       Text("Last week, reviewed", style = MaterialTheme.typography.labelLarge)
       Text(
         if (recommendation.proposedKcal != null && recommendation.status == "pending") "A small adjustment is ready"
