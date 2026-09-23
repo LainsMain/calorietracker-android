@@ -106,30 +106,42 @@ fun WeeklyCheckInDialog(
   var note by rememberSaveable { mutableStateOf("") }
   var error by remember { mutableStateOf<String?>(null) }
   val days = (0L..6L).map { period.start.plusDays(it) }
-  Modal("Weekly check-in", onDismiss) {
+  ActionModal("Weekly check-in", onDismiss, action = {
+    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+      if (step > 0) OutlinedButton({ step-- }, Modifier.weight(1f)) { Text("Back") }
+      Button({
+        if (step < 2) step++ else {
+          try {
+            val chosenWeight = if (useWeight) latestWeight?.value else weight.toDoubleOrNull()
+            val checkIn = WeeklyCheckIn(id = "weekly:${period.start}", periodStart = period.start.toString(), periodEnd = period.endInclusive.toString(), confirmedDates = selected.distinct().sorted(), weightMeasurementId = if (useWeight) latestWeight?.id else null, weightKg = chosenWeight, note = note.trim())
+            vm.run { vm.store.saveWeeklyCheckIn(checkIn) }
+            onDismiss()
+          } catch (e: Exception) { error = e.message ?: "Check the weight value." }
+        }
+      }, Modifier.weight(1f)) { Text(if (step < 2) "Continue" else "Finish review") }
+    }
+  }) {
     Text("Step ${step + 1} of 3", style = MaterialTheme.typography.labelLarge)
     LinearProgressIndicator({ (step + 1) / 3f }, Modifier.fillMaxWidth())
     when (step) {
       0 -> {
         Text("Which days were fully tracked?", style = MaterialTheme.typography.headlineSmall)
         Text("Select a day only if food and drinks were logged closely enough to represent the whole day. There is no penalty for leaving a day out.")
-        days.forEach { date ->
-          val id = date.toString()
-          Surface(
-            onClick = { if (id in selected) selected.remove(id) else selected.add(id) },
-            color = if (id in selected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainer,
-            shape = MaterialTheme.shapes.large,
-          ) {
-            Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
-              Checkbox(id in selected, { if (it) selected.add(id) else selected.remove(id) })
-              Column {
-                Text(date.format(DateTimeFormatter.ofPattern("EEEE")), style = MaterialTheme.typography.titleMedium)
-                val kcal = s.totals(id).kcal
-                Text(kcal?.let { "${it.fmt()} kcal logged" } ?: "No complete energy total", style = MaterialTheme.typography.bodySmall)
-              }
+        days.chunked(4).forEach { row ->
+          Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            row.forEach { date ->
+              val id = date.toString()
+              FilterChip(selected = id in selected, onClick = { if (id in selected) selected.remove(id) else selected.add(id) }, label = {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                  Text(date.format(DateTimeFormatter.ofPattern("EEE")))
+                  Text(date.dayOfMonth.toString())
+                }
+              }, modifier = Modifier.weight(1f))
             }
+            repeat(4 - row.size) { Spacer(Modifier.weight(1f)) }
           }
         }
+        Text("${selected.size} days marked complete · ${selected.mapNotNull { s.totals(it).kcal }.average().takeIf { it.isFinite() }?.fmt() ?: "—"} kcal average", style = MaterialTheme.typography.bodySmall)
       }
       1 -> {
         Text("Add a useful weight point", style = MaterialTheme.typography.headlineSmall)
@@ -153,28 +165,6 @@ fun WeeklyCheckInDialog(
       }
     }
     ErrorText(error)
-    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-      if (step > 0) OutlinedButton({ step-- }, Modifier.weight(1f)) { Text("Back") }
-      Button({
-        if (step < 2) step++ else {
-          try {
-            val chosenWeight = if (useWeight) latestWeight?.value else weight.toDoubleOrNull()
-            val checkIn =
-              WeeklyCheckIn(
-                id = "weekly:${period.start}",
-                periodStart = period.start.toString(),
-                periodEnd = period.endInclusive.toString(),
-                confirmedDates = selected.distinct().sorted(),
-                weightMeasurementId = if (useWeight) latestWeight?.id else null,
-                weightKg = chosenWeight,
-                note = note.trim(),
-              )
-            vm.run { vm.store.saveWeeklyCheckIn(checkIn) }
-            onDismiss()
-          } catch (e: Exception) { error = e.message ?: "Check the weight value." }
-        }
-      }, Modifier.weight(1f)) { Text(if (step < 2) "Continue" else "Finish review") }
-    }
   }
 }
 

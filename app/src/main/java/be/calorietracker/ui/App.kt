@@ -110,7 +110,7 @@ fun TrackerApp(vm: TrackerViewModel, quickLog: Boolean = false) {
                 date = today()
               },
               { planSeed = state.plan(); planEditor = true },
-              { vm.run { vm.store.update { it.copy(water = it.water + Water()) } } },
+              { ml -> vm.run { vm.store.update { it.copy(water = it.water + Water(ml = ml)) } } },
               { tab = 4 },
               { weeklyPeriod = it },
               { draft -> planSeed = draft; planEditor = true },
@@ -194,7 +194,7 @@ fun TodayScreen(
   s: AppState,
   log: () -> Unit,
   edit: () -> Unit,
-  water: () -> Unit,
+  water: (Int) -> Unit,
   coach: () -> Unit,
   startWeekly: (ClosedRange<LocalDate>) -> Unit,
   editWeekly: (Plan) -> Unit,
@@ -211,7 +211,7 @@ fun TodayScreen(
     item {
       PageTitle(
         date.format(DateTimeFormatter.ofPattern("EEEE, d MMMM")),
-        "A little better,\nevery day.",
+        "Today",
       )
     }
     item { WeeklyReviewCard(vm, s, startWeekly, editWeekly, coach) }
@@ -247,13 +247,13 @@ fun TodayScreen(
       }
     }
     item {
-      Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-        MacroCard("Protein", totals.protein, plan?.protein, Color(0xFFB9D6D0), Modifier.weight(1f))
-        MacroCard("Carbs", totals.carbs, plan?.carbs, Color(0xFFE2D5A5), Modifier.weight(1f))
-        MacroCard("Fat", totals.fat, plan?.fat, Color(0xFFE7C9B8), Modifier.weight(1f))
+      Panel {
+        MacroLine("Protein", totals.protein, plan?.protein, MaterialTheme.colorScheme.primary)
+        MacroLine("Carbs", totals.carbs, plan?.carbs, Color(0xFFC97842))
+        MacroLine("Fat", totals.fat, plan?.fat, Color(0xFF9A9B23))
       }
     }
-    item { Section("Make it a good day") }
+    item { Section("Activity") }
     item {
       Panel(Modifier.fillMaxWidth()) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -275,8 +275,13 @@ fun TodayScreen(
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
           Icon(Icons.Rounded.WaterDrop, null, tint = MaterialTheme.colorScheme.primary)
           Text("  Water", Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
-          Text("${s.water.filter{it.date==today()}.sumOf{it.ml}} ml")
-          TextButton(onClick = water) { Text("+ 250 ml") }
+          Text("${s.water.filter{it.date==today()}.sumOf{it.ml}} / ${s.waterGoalMl} ml")
+        }
+        LinearProgressIndicator(progress = { (s.water.filter { it.date == today() }.sumOf { it.ml }.toFloat() / s.waterGoalMl).coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth())
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+          s.waterQuickAmountsMl.forEach { amount ->
+            FilledTonalButton(onClick = { water(amount) }) { Text("+ $amount ml") }
+          }
         }
       }
     }
@@ -349,28 +354,18 @@ fun WorkoutSummary(workout: Workout) {
 }
 
 @Composable
-private fun MacroCard(
+private fun MacroLine(
   label: String,
   value: Double?,
   target: Double?,
   colour: Color,
-  modifier: Modifier,
 ) {
-  Surface(
-    modifier,
-    shape = RoundedCornerShape(24.dp),
-    color = MaterialTheme.colorScheme.surfaceContainer,
-  ) {
-    Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(9.dp)) {
-      Box(Modifier.size(10.dp).background(colour, RoundedCornerShape(10.dp)))
-      Text(label, style = MaterialTheme.typography.labelLarge)
-      Text("${value.fmt()} g", style = MaterialTheme.typography.titleLarge)
-      Text(
-        "of ${target.fmt()} g",
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant,
-      )
+  Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+    Row(Modifier.fillMaxWidth()) {
+      Text(label, Modifier.weight(1f), style = MaterialTheme.typography.labelLarge)
+      Text("${value.fmt()} / ${target.fmt()} g", style = MaterialTheme.typography.labelLarge)
     }
+    LinearProgressIndicator(progress = { ((value ?: 0.0) / (target ?: 1.0)).toFloat().coerceIn(0f, 1f) }, modifier = Modifier.fillMaxWidth(), color = colour, trackColor = MaterialTheme.colorScheme.surfaceContainerHigh)
   }
 }
 
@@ -384,6 +379,10 @@ fun DiaryScreen(
 ) {
   var calendar by remember { mutableStateOf(false) }
   var copyMeal by remember { mutableStateOf<String?>(null) }
+  var templateMeal by remember { mutableStateOf<String?>(null) }
+  var templateName by remember { mutableStateOf("") }
+  var templateToLog by remember { mutableStateOf<MealTemplate?>(null) }
+  var openedEmpty by remember { mutableStateOf<Set<String>>(emptySet()) }
   var full by remember { mutableStateOf(false) }
   LazyColumn(
     modifier = Modifier.testTag("diary-list"),
@@ -392,17 +391,20 @@ fun DiaryScreen(
   ) {
     item { PageTitle("Your food story", "Food diary") }
     item {
-      Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        IconButton(onClick = { onDate(LocalDate.parse(date).minusDays(1).toString()) }) {
-          Icon(Icons.Rounded.ChevronLeft, "Previous day")
-        }
-        TextButton(onClick = { calendar = true }, modifier = Modifier.weight(1f)) {
-          Text(LocalDate.parse(date).format(DateTimeFormatter.ofPattern("EEE, d MMM yyyy")))
-        }
-        IconButton(onClick = { onDate(LocalDate.parse(date).plusDays(1).toString()) }) {
-          Icon(Icons.Rounded.ChevronRight, "Next day")
+      Row(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        (-3L..3L).forEach { offset ->
+          val day = LocalDate.parse(date).plusDays(offset)
+          FilterChip(
+            selected = offset == 0L,
+            onClick = { onDate(day.toString()) },
+            label = { Column(horizontalAlignment = Alignment.CenterHorizontally) {
+              Text(day.format(DateTimeFormatter.ofPattern("EEE")))
+              Text(day.dayOfMonth.toString())
+            } },
+          )
         }
       }
+      TextButton(onClick = { calendar = true }) { Text("Choose date · ${LocalDate.parse(date).format(DateTimeFormatter.ofPattern("d MMM yyyy"))}") }
     }
     item {
       Panel {
@@ -412,6 +414,14 @@ fun DiaryScreen(
         }
         Text("Daily target ${energy(s.plan(date)?.kcal)}")
         if (full) NutrientGrid(s.totals(date))
+      }
+    }
+    if (s.mealTemplates.isNotEmpty()) item {
+      Section("Saved meals")
+      Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        s.mealTemplates.forEach { template ->
+          FilterChip(selected = false, onClick = { templateToLog = template }, label = { Text(template.name) })
+        }
       }
     }
     val visibleMeals =
@@ -426,16 +436,26 @@ fun DiaryScreen(
         s.entries.filter {
           it.date == date && if (configured) it.meal.equals(meal, true) else it.meal == meal
         }
-      item { Section(meal.ifBlank { "Other" }, if (entries.isNotEmpty()) "Copy" else null) { copyMeal = meal } }
-      if (entries.isEmpty())
-        item {
+      item {
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+          Text(meal.ifBlank { "Other" }, Modifier.weight(1f), style = MaterialTheme.typography.titleMedium)
+          if (entries.isNotEmpty()) {
+            TextButton(onClick = { templateName = meal; templateMeal = meal }) { Text("Save meal") }
+            TextButton(onClick = { copyMeal = meal }) { Text("Copy") }
+          } else TextButton(onClick = { openedEmpty = if (meal in openedEmpty) openedEmpty - meal else openedEmpty + meal }) {
+            Text(if (meal in openedEmpty) "Hide" else "Show")
+          }
+        }
+      }
+      if (entries.isEmpty()) {
+        if (meal in openedEmpty) item {
           Text(
             "Nothing logged yet",
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(bottom = 12.dp),
           )
         }
-      else
+      } else
         items(entries, key = { it.id }) { e ->
           Surface(
             onClick = { onEntry(e) },
@@ -454,6 +474,36 @@ fun DiaryScreen(
             }
           }
         }
+    }
+  }
+  templateMeal?.let { meal ->
+    Modal("Save this meal", { templateMeal = null }) {
+      Text("${s.entries.count { it.date == date && it.meal.equals(meal, true) }} foods will be saved with their logged portions.")
+      Field("Template name", templateName, { templateName = it })
+      Button(onClick = {
+        vm.run { vm.store.saveMealTemplate(templateName.trim(), date, meal) }
+        templateMeal = null
+      }, enabled = templateName.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text("Save meal template") }
+    }
+  }
+  templateToLog?.let { template ->
+    var chosenMeal by remember(template.id) { mutableStateOf(template.meal) }
+    Modal("Log ${template.name}", { templateToLog = null }) {
+      Text("Review what will be added to ${LocalDate.parse(date).format(DateTimeFormatter.ofPattern("d MMM"))}.")
+      Choice("Meal", s.meals, chosenMeal, { chosenMeal = it })
+      template.items.forEach { item ->
+        Text("${item.food.name} · ${item.amount.fmt(1)} ${item.unit} · ${energy(item.food.portion(item.amount, item.unit).kcal)}")
+      }
+      val total = Nutrients.total(template.items.map { it.food.portion(it.amount, it.unit) })
+      Text("Total ${energy(total.kcal)}", style = MaterialTheme.typography.titleMedium)
+      Button(onClick = {
+        vm.run { vm.store.logMealTemplate(template.id, date, chosenMeal) }
+        templateToLog = null
+      }, modifier = Modifier.fillMaxWidth()) { Text("Log meal") }
+      TextButton(onClick = {
+        vm.run { vm.store.update { it.copy(mealTemplates = it.mealTemplates.filterNot { t -> t.id == template.id }) } }
+        templateToLog = null
+      }) { Text("Delete template", color = MaterialTheme.colorScheme.error) }
     }
   }
   copyMeal?.let { meal ->

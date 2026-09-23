@@ -3,6 +3,7 @@ package be.calorietracker
 import be.calorietracker.domain.*
 import be.calorietracker.services.BackupCipher
 import java.time.*
+import kotlinx.serialization.json.Json
 import org.junit.Assert.*
 import org.junit.Test
 
@@ -14,6 +15,25 @@ class DomainTest {
     val recipe =
       Recipe(name = "Batch", ingredients = listOf(Ingredient(food, 1000.0)), batchGrams = 1000.0)
     assertEquals(300.0, recipe.portion(200.0).kcal!!, 0.00001)
+  }
+
+  @Test
+  fun mealTemplateCreatesFreshEntriesWithoutChangingOriginal() {
+    val template = MealTemplate(name = "Breakfast", meal = "Breakfast", items = listOf(TemplateItem(food, 200.0, "g")))
+    val first = template.entries("2026-09-21", "Breakfast").single()
+    val second = template.entries("2026-09-22", "Lunch").single()
+    assertNotEquals(first.id, second.id)
+    assertEquals(300.0, second.nutrients.kcal!!, 0.0)
+    assertEquals("2026-09-21", first.date)
+    assertEquals("Lunch", second.meal)
+  }
+
+  @Test
+  fun oldAppStateDecodesWithWaterAndTemplateDefaults() {
+    val state = Json { ignoreUnknownKeys = true }.decodeFromString<AppState>("{\"schema\":1}")
+    assertEquals(2000, state.waterGoalMl)
+    assertEquals(listOf(250, 500), state.waterQuickAmountsMl)
+    assertTrue(state.mealTemplates.isEmpty())
   }
 
   @Test

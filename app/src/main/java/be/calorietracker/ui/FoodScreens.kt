@@ -131,7 +131,19 @@ fun PortionEditor(
   var note by remember { mutableStateOf(entry?.note ?: "") }
   var error by remember { mutableStateOf<String?>(null) }
   val n = runCatching { selectedFood.portion(amount.toDouble(), unit) }.getOrNull()
-  Modal(selectedFood.name, onDismiss) {
+  ActionModal(selectedFood.name, onDismiss, action = {
+    Button(
+      onClick = {
+        try {
+          LocalDate.parse(selectedDate)
+          val portion = selectedFood.portion(amount.toDouble(), unit)
+          onSave(Entry(id = entry?.id ?: newId(), date = selectedDate, meal = meal, food = selectedFood, amount = amount.toDouble(), unit = unit, nutrients = portion, note = note, created = entry?.created ?: now(), zoneOffset = entry?.zoneOffset ?: offset()))
+        } catch (e: Exception) {
+          error = e.message ?: "Check amount and date."
+        }
+      }, modifier = Modifier.fillMaxWidth(), enabled = n != null,
+    ) { Text(if (entry == null) "Log food" else "Save changes") }
+  }) {
     Text(
       "${selectedFood.source} · values per 100 ${selectedFood.basis}",
       style = MaterialTheme.typography.bodySmall,
@@ -145,39 +157,19 @@ fun PortionEditor(
       { unit = it },
     )
     Choice("Meal", meals, meal, { meal = it })
+    if (n != null) {
+      Panel(tint = MaterialTheme.colorScheme.primaryContainer) {
+        Text("THIS PORTION", style = MaterialTheme.typography.labelMedium)
+        Text(energy(n.kcal), style = MaterialTheme.typography.headlineMedium)
+        Text("Protein ${n.protein.fmt(1)} g · Carbs ${n.carbs.fmt(1)} g · Fat ${n.fat.fmt(1)} g")
+      }
+    }
     Field("Date (YYYY-MM-DD)", selectedDate, { selectedDate = it })
     Field("Notes", note, { note = it })
     TextButton(onClick = { editNutrition = true }) { Text("Edit nutrition / portion definitions") }
     if (n != null) NutrientGrid(n)
     Text("— means unknown, not zero.", style = MaterialTheme.typography.bodySmall)
     ErrorText(error)
-    Button(
-      onClick = {
-        try {
-          LocalDate.parse(selectedDate)
-          val portion = selectedFood.portion(amount.toDouble(), unit)
-          onSave(
-            Entry(
-              id = entry?.id ?: newId(),
-              date = selectedDate,
-              meal = meal,
-              food = selectedFood,
-              amount = amount.toDouble(),
-              unit = unit,
-              nutrients = portion,
-              note = note,
-              created = entry?.created ?: now(),
-              zoneOffset = entry?.zoneOffset ?: offset(),
-            )
-          )
-        } catch (e: Exception) {
-          error = e.message ?: "Check amount and date."
-        }
-      },
-      modifier = Modifier.fillMaxWidth(),
-    ) {
-      Text(if (entry == null) "Log food" else "Save changes")
-    }
     if (entry != null)
       OutlinedButton(
         onClick = { onSave(entry.copy(id = newId(), date = today(), created = now())) },

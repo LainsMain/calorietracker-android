@@ -17,6 +17,8 @@ import androidx.compose.ui.*
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -43,9 +45,12 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
   var showSearch by remember { mutableStateOf(false) }
   var showInfo by remember { mutableStateOf(false) }
   var showChats by remember { mutableStateOf(false) }
+  var rename by remember { mutableStateOf(false) }
+  var chatTitle by remember { mutableStateOf("") }
   val clipboard = LocalClipboardManager.current
   val context = LocalContext.current
   val conversationId = s.activeConversationId
+  val activeTitle = s.conversations.firstOrNull { it.id == conversationId }?.title ?: "Your coach"
   val visibleMessages =
     s.messages.filter {
       it.conversationId == conversationId &&
@@ -106,15 +111,18 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
     }
   }
   Column(Modifier.fillMaxSize()) {
-    Box(Modifier.padding(horizontal = 20.dp)) {
-      PageTitle("A fresh chat whenever you want", "Your coach") {
-        IconButton(onClick = { showChats = true }) { Icon(Icons.Rounded.History, "Chat history") }
-        IconButton(onClick = { vm.run { vm.store.newConversation() } }, enabled = !busy) {
-          Icon(Icons.Rounded.AddComment, "New chat")
-        }
+    Column(Modifier.padding(horizontal = 20.dp)) {
+      PageTitle("YOUR COACH", activeTitle) {
+        IconButton(onClick = { chatTitle = activeTitle; rename = true }) { Icon(Icons.Rounded.Edit, "Rename chat") }
         IconButton(onClick = { showInfo = true }) { Icon(Icons.Rounded.Info, "Conversation information") }
         IconButton(onClick = { showSearch = !showSearch }) {
           Icon(Icons.Rounded.Search, "Search conversation")
+        }
+      }
+      Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        OutlinedButton(onClick = { showChats = true }, modifier = Modifier.semantics { contentDescription = "Chat history" }) { Icon(Icons.Rounded.History, null); Text(" History") }
+        FilledTonalButton(onClick = { vm.run { vm.store.newConversation() } }, enabled = !busy, modifier = Modifier.semantics { contentDescription = "New chat" }) {
+          Icon(Icons.Rounded.AddComment, null); Text(" New chat")
         }
       }
     }
@@ -342,6 +350,17 @@ fun CoachScreen(vm: TrackerViewModel, s: AppState) {
         }
       },
       confirmButton = { TextButton({ showInfo = false }) { Text("Done") } },
+    )
+  if (rename)
+    AlertDialog(
+      onDismissRequest = { rename = false },
+      title = { Text("Name this chat") },
+      text = { Field("Chat title", chatTitle, { chatTitle = it }) },
+      confirmButton = { TextButton(onClick = {
+        vm.run { vm.store.renameConversation(conversationId, chatTitle.trim()) }
+        rename = false
+      }, enabled = chatTitle.isNotBlank()) { Text("Save") } },
+      dismissButton = { TextButton(onClick = { rename = false }) { Text("Cancel") } },
     )
   delete?.let { m ->
     AlertDialog(

@@ -203,6 +203,7 @@ data class Food(
   val aliases: String = "",
   val favourite: Boolean = false,
   val lastUsed: String? = null,
+  val imageUrl: String? = null,
 ) {
   fun portion(amount: Double, unit: String): Nutrients {
     require(amount.isFinite() && amount > 0)
@@ -268,6 +269,30 @@ data class Entry(
   val created: String = now(),
   val zoneOffset: Int = offset(),
 )
+
+@Serializable
+data class TemplateItem(val food: Food, val amount: Double, val unit: String)
+
+@Serializable
+data class MealTemplate(
+  val id: String = newId(),
+  val name: String,
+  val meal: String,
+  val items: List<TemplateItem>,
+  val created: String = now(),
+) {
+  fun entries(date: String, chosenMeal: String = meal): List<Entry> =
+    items.map { item ->
+      Entry(
+        date = date,
+        meal = chosenMeal,
+        food = item.food,
+        amount = item.amount,
+        unit = item.unit,
+        nutrients = item.food.portion(item.amount, item.unit),
+      )
+    }
+}
 
 @Serializable
 data class Measurement(
@@ -405,6 +430,9 @@ data class AppState(
   val weeklyCheckIns: List<WeeklyCheckIn> = emptyList(),
   val weeklyRecommendations: List<WeeklyRecommendation> = emptyList(),
   val water: List<Water> = emptyList(),
+  val waterGoalMl: Int = 2000,
+  val waterQuickAmountsMl: List<Int> = listOf(250, 500),
+  val mealTemplates: List<MealTemplate> = emptyList(),
   val meals: List<String> = listOf("Breakfast", "Lunch", "Dinner", "Snacks"),
 ) {
   fun plan(date: String = today()) =
@@ -443,6 +471,12 @@ data class AppState(
       val end = LocalDate.parse(it.periodEnd)
       require(!end.isBefore(start) && it.confirmedDates.all { d -> LocalDate.parse(d) in start..end })
       require(it.weightKg == null || it.weightKg.isFinite() && it.weightKg > 0)
+    }
+    require(waterGoalMl in 250..10000)
+    require(waterQuickAmountsMl.isNotEmpty() && waterQuickAmountsMl.all { it in 50..2000 })
+    mealTemplates.forEach { template ->
+      require(template.name.isNotBlank() && template.meal.isNotBlank() && template.items.isNotEmpty())
+      template.items.forEach { it.food.portion(it.amount, it.unit) }
     }
     require(entries.map { it.id }.distinct().size == entries.size)
   }

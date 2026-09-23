@@ -176,6 +176,29 @@ constructor(@ApplicationContext private val context: Context, private val crypto
     )
   }
 
+  suspend fun saveMealTemplate(name: String, date: String, meal: String) = update { state ->
+    val entries = state.entries.filter { it.date == date && it.meal.equals(meal, true) }
+    require(name.isNotBlank() && entries.isNotEmpty()) { "Choose a logged meal and enter a name." }
+    state.copy(
+      mealTemplates = state.mealTemplates + MealTemplate(
+        name = name.trim(),
+        meal = meal,
+        items = entries.map { TemplateItem(it.food, it.amount, it.unit) },
+      )
+    )
+  }
+
+  suspend fun logMealTemplate(id: String, date: String, meal: String) = update { state ->
+    java.time.LocalDate.parse(date)
+    val template = state.mealTemplates.first { it.id == id }
+    val entries = template.entries(date, meal)
+    state.copy(
+      entries = state.entries + entries,
+      foods = (state.foods.filterNot { cached -> entries.any { it.food.id == cached.id } } +
+        entries.map { it.food.copy(lastUsed = now()) }).distinctBy { it.id },
+    )
+  }
+
   suspend fun newConversation() = update { state ->
     val conversation = Conversation()
     state.copy(
@@ -191,6 +214,16 @@ constructor(@ApplicationContext private val context: Context, private val crypto
         state.messages.any { it.conversationId == id }
     )
     state.copy(activeConversationId = id)
+  }
+
+  suspend fun renameConversation(id: String, title: String) = update { state ->
+    require(title.isNotBlank())
+    val existing = state.conversations.firstOrNull { it.id == id }
+    require(id == "default" || existing != null)
+    state.copy(
+      conversations = state.conversations.filterNot { it.id == id } +
+        (existing?.copy(title = title.trim()) ?: Conversation(id = id, title = title.trim()))
+    )
   }
 
   suspend fun deleteMessage(id: String) {
